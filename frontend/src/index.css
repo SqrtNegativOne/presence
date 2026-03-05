@@ -1,0 +1,232 @@
+/*
+  Google Fonts — loaded before Tailwind so they're available globally.
+  Fraunces: a variable optical serif. At large sizes ("opsz" 144) it has
+  beautiful ink traps that make headings feel like printed text.
+  Space Mono: fixed-width, great for data and numbers.
+  Outfit: clean geometric for body text.
+*/
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Custom Properties ────────────────────────────────────────────────
+   Think of these as named colors/sizes. Use them with var(--col-accent).
+   Changing one value here updates every component that uses it.
+   ─────────────────────────────────────────────────────────────────────── */
+:root {
+  --col-bg:       #06060f;   /* deep navy-black */
+  --col-surface:  #0d0d1e;   /* card backgrounds */
+  --col-surface2: #131328;   /* input backgrounds, table header */
+  --col-border:   #1c1c38;   /* subtle borders */
+  --col-border2:  #2a2a50;   /* slightly brighter borders */
+  --col-accent:   #f0b429;   /* amber/gold — the one accent color */
+  --col-text:     #ece8f0;   /* near-white warm text */
+  --col-muted:    #55527a;   /* secondary text */
+  --col-green:    #34d399;   /* present/success */
+  --col-red:      #f87171;   /* unknown/error */
+}
+
+/* ── Global Base Styles ──────────────────────────────────────────────────
+   @layer base: these run at the same priority as Tailwind's own resets,
+   so they won't accidentally override utility classes.
+   ─────────────────────────────────────────────────────────────────────── */
+@layer base {
+  body {
+    background-color: var(--col-bg);
+    color: var(--col-text);
+    font-family: 'Outfit', sans-serif;
+    /* A subtle dot-grid adds depth without distracting from content */
+    background-image: radial-gradient(circle, #1c1c38 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-attachment: fixed;
+  }
+
+  /* Tinted scrollbars to match dark theme */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--col-bg); }
+  ::-webkit-scrollbar-thumb { background: var(--col-border2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--col-muted); }
+}
+
+/* ── Custom Component Classes ─────────────────────────────────────────────
+   @layer components: reusable classes we can use in JSX like className="card".
+   Defined here instead of in every component file to avoid repetition.
+   ─────────────────────────────────────────────────────────────────────── */
+@layer components {
+
+  /* ── Card / surface container ── */
+  .card {
+    background: var(--col-surface);
+    border: 1px solid var(--col-border);
+  }
+
+  /* ── Left-accent input style ──
+     Instead of a full box border, only the left side is accented.
+     This gives a "form field in a document" feel.
+  */
+  .field-input {
+    width: 100%;
+    background: var(--col-surface2);
+    border: none;
+    border-left: 2px solid var(--col-border2);
+    padding: 0.625rem 0.875rem;
+    color: var(--col-text);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.875rem;
+    transition: border-left-color 0.15s, background-color 0.15s;
+    outline: none;
+  }
+  .field-input:focus {
+    border-left-color: var(--col-accent);
+    background: #17173a;
+  }
+  .field-input::placeholder {
+    color: var(--col-muted);
+  }
+
+  /* ── Primary amber button ── */
+  .btn-amber {
+    display: block;
+    width: 100%;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: var(--col-accent);
+    color: #06060f;
+    border: none;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-amber:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+  .btn-amber:disabled {
+    background: var(--col-border);
+    color: var(--col-muted);
+    cursor: not-allowed;
+  }
+
+  /* ── Ghost / outline button ── */
+  .btn-ghost {
+    display: inline-block;
+    padding: 0.375rem 0.875rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--col-border2);
+    color: var(--col-muted);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    border-color: var(--col-accent);
+    color: var(--col-accent);
+  }
+  .btn-ghost:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* ── Status badges (look like rubber stamps) ── */
+  .badge-present {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--col-green);
+    border: 1px solid var(--col-green);
+  }
+  .badge-unknown {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--col-red);
+    border: 1px solid var(--col-red);
+  }
+  .badge-class {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    color: var(--col-accent);
+    border: 1px solid var(--col-accent);
+    opacity: 0.8;
+  }
+
+  /* ── Table column header ── */
+  .th {
+    padding: 0.75rem 1.25rem;
+    text-align: left;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--col-muted);
+  }
+
+  /* ── Page section label (e.g. "01 / Enroll") ── */
+  .page-label {
+    display: block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--col-accent);
+    opacity: 0.8;
+    margin-bottom: 0.5rem;
+  }
+
+  /* ── Field label ── */
+  .field-label {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--col-muted);
+    margin-bottom: 0.375rem;
+  }
+
+  /* ── Alert / toast strip ── */
+  .alert-success {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    border-left: 3px solid var(--col-green);
+    background: rgba(52, 211, 153, 0.06);
+    color: var(--col-green);
+  }
+  .alert-error {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    border-left: 3px solid var(--col-red);
+    background: rgba(248, 113, 113, 0.06);
+    color: var(--col-red);
+  }
+}
+
+/* ── Page entry animations ─────────────────────────────────────────────────
+   CSS keyframes animate elements when they first appear.
+   "animation-fill-mode: forwards" keeps the final state (opacity: 1)
+   after the animation completes.
+   ─────────────────────────────────────────────────────────────────────── */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter          { animation: fadeSlideUp 0.4s ease forwards; }
+.page-enter-d1       { opacity: 0; animation: fadeSlideUp 0.4s ease 0.07s forwards; }
+.page-enter-d2       { opacity: 0; animation: fadeSlideUp 0.4s ease 0.14s forwards; }
+.page-enter-d3       { opacity: 0; animation: fadeSlideUp 0.4s ease 0.21s forwards; }

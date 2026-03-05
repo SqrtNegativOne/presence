@@ -1,0 +1,6 @@
+.venv
+__pycache__/
+node_modules/
+bash.exe.stackdump
+buffalo_l.zip
+*.onnx
