@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { enrollStudent } from "../api";
+import { bulkEnrollStudents, enrollStudent } from "../api";
 
 export default function EnrollPage() {
   // Form field state
@@ -185,6 +185,266 @@ export default function EnrollPage() {
         </form>
       </div>
 
+      {/* ── Bulk Import section ──────────────────────────────────────── */}
+      <BulkEnrollSection />
+
+    </div>
+  );
+}
+
+/* ── Bulk CSV + ZIP enrollment ─────────────────────────────────────────── */
+function BulkEnrollSection() {
+  const [csvFile, setCsvFile]     = useState(null);
+  const [zipFile, setZipFile]     = useState(null);
+  const [loading, setLoading]     = useState(false);
+  const [results, setResults]     = useState(null); // response from API
+  const [error, setError]         = useState(null);
+
+  const csvRef = useRef(null);
+  const zipRef = useRef(null);
+
+  async function handleBulkSubmit(e) {
+    e.preventDefault();
+    if (!csvFile || !zipFile) return;
+
+    setLoading(true);
+    setResults(null);
+    setError(null);
+
+    const fd = new FormData();
+    fd.append("csv_file",   csvFile);
+    fd.append("photos_zip", zipFile);
+
+    try {
+      const data = await bulkEnrollStudents(fd);
+      setResults(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleReset() {
+    setCsvFile(null);
+    setZipFile(null);
+    setResults(null);
+    setError(null);
+    if (csvRef.current) csvRef.current.value = "";
+    if (zipRef.current) zipRef.current.value = "";
+  }
+
+  return (
+    <div className="mt-10">
+
+      {/* Section divider */}
+      <div className="flex items-center gap-4 mb-6">
+        <div style={{ flex: 1, height: "1px", background: "var(--col-border)" }} />
+        <span
+          className="text-xs tracking-[0.15em] uppercase"
+          style={{ color: "var(--col-muted)" }}
+        >
+          or import in bulk
+        </span>
+        <div style={{ flex: 1, height: "1px", background: "var(--col-border)" }} />
+      </div>
+
+      <div className="mb-4">
+        <h2
+          className="text-xl font-bold"
+          style={{ fontFamily: "'Fraunces', serif" }}
+        >
+          Bulk Import
+        </h2>
+        <p className="text-sm mt-1" style={{ color: "var(--col-muted)" }}>
+          Upload a CSV roster and a ZIP of photos to enroll many students at once.
+        </p>
+      </div>
+
+      {/* Format hint */}
+      <div
+        className="mb-5 p-4 text-xs"
+        style={{
+          background: "var(--col-surface2)",
+          border: "1px solid var(--col-border)",
+          fontFamily: "'Space Mono', monospace",
+          color: "var(--col-muted)",
+          lineHeight: 1.7,
+        }}
+      >
+        <div className="mb-1 font-semibold" style={{ color: "var(--col-text)" }}>
+          CSV format (header row required)
+        </div>
+        name,roll_number,class_name,photo<br />
+        Arjun Sharma,CS101,10-A,arjun.jpg<br />
+        Priya Patel,CS102,10-A,priya.jpg<br />
+        <div className="mt-2" style={{ opacity: 0.7 }}>
+          The ZIP must contain all photos referenced in the <em>photo</em> column.
+        </div>
+      </div>
+
+      {error && (
+        <div className="alert-error mb-5">{error}</div>
+      )}
+
+      {/* Upload form */}
+      {!results && (
+        <div className="card">
+          <form onSubmit={handleBulkSubmit}>
+            <div className="p-6 space-y-5">
+
+              <Field label="CSV Roster File">
+                <div
+                  style={{
+                    borderLeft: "2px solid var(--col-border2)",
+                    background: "var(--col-surface2)",
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    ref={csvRef}
+                    onChange={(e) => setCsvFile(e.target.files[0] || null)}
+                    required
+                    className="block w-full text-sm cursor-pointer py-2.5 px-3"
+                    style={{ color: "var(--col-muted)" }}
+                  />
+                </div>
+              </Field>
+
+              <Field label="Photos ZIP File">
+                <div
+                  style={{
+                    borderLeft: "2px solid var(--col-border2)",
+                    background: "var(--col-surface2)",
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept=".zip,application/zip"
+                    ref={zipRef}
+                    onChange={(e) => setZipFile(e.target.files[0] || null)}
+                    required
+                    className="block w-full text-sm cursor-pointer py-2.5 px-3"
+                    style={{ color: "var(--col-muted)" }}
+                  />
+                </div>
+              </Field>
+
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--col-border)" }}>
+              <button
+                type="submit"
+                disabled={loading || !csvFile || !zipFile}
+                className="btn-amber"
+              >
+                {loading ? "Importing…" : "Import Students"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Results */}
+      {results && (
+        <div className="card page-enter">
+
+          {/* Summary bar */}
+          <div
+            className="px-5 py-3 flex items-center gap-6"
+            style={{ borderBottom: "1px solid var(--col-border)", background: "var(--col-surface2)" }}
+          >
+            <Stat label="Total" value={results.total} />
+            <Stat label="Enrolled" value={results.succeeded} color="var(--col-green, #4caf50)" />
+            <Stat label="Failed" value={results.failed} color={results.failed > 0 ? "var(--col-red)" : undefined} />
+            <button
+              onClick={handleReset}
+              className="ml-auto text-xs px-3 py-1.5 transition-colors duration-150"
+              style={{ border: "1px solid var(--col-border2)", color: "var(--col-muted)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--col-text)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--col-muted)")}
+            >
+              Import another
+            </button>
+          </div>
+
+          {/* Per-row results table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--col-border)" }}>
+                  <th className="th">Row</th>
+                  <th className="th">Name</th>
+                  <th className="th">Roll #</th>
+                  <th className="th">Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.results.map((r) => (
+                  <tr
+                    key={r.row}
+                    style={{ borderBottom: "1px solid var(--col-border)" }}
+                  >
+                    <td
+                      className="px-5 py-3 text-xs"
+                      style={{ fontFamily: "'Space Mono', monospace", color: "var(--col-muted)" }}
+                    >
+                      {r.row}
+                    </td>
+                    <td className="px-5 py-3 font-medium">{r.name || "—"}</td>
+                    <td
+                      className="px-5 py-3 text-xs"
+                      style={{ fontFamily: "'Space Mono', monospace", color: "var(--col-muted)" }}
+                    >
+                      {r.roll_number || "—"}
+                    </td>
+                    <td className="px-5 py-3">
+                      {r.status === "ok" ? (
+                        <span
+                          className="text-xs font-semibold"
+                          style={{ color: "var(--col-green, #4caf50)" }}
+                        >
+                          Enrolled
+                        </span>
+                      ) : (
+                        <span
+                          className="text-xs"
+                          style={{ color: "var(--col-red)" }}
+                        >
+                          {r.detail}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+/* Small stat display used in the results summary bar */
+function Stat({ label, value, color }) {
+  return (
+    <div className="flex flex-col items-start">
+      <span
+        className="text-xs tracking-widest uppercase"
+        style={{ color: "var(--col-muted)", fontSize: "0.6rem" }}
+      >
+        {label}
+      </span>
+      <span
+        className="text-lg font-bold leading-tight"
+        style={{ fontFamily: "'Space Mono', monospace", color: color || "var(--col-text)" }}
+      >
+        {value}
+      </span>
     </div>
   );
 }

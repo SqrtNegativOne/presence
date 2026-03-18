@@ -39,6 +39,23 @@ export async function listStudents(className = null) {
 }
 
 /**
+ * Bulk-enroll students from a CSV file and a ZIP of their photos.
+ * @param {FormData} formData  Must contain: csv_file (File), photos_zip (File)
+ * Returns { total, succeeded, failed, results[] }
+ */
+export async function bulkEnrollStudents(formData) {
+  const res = await fetch(`${BASE}/students/bulk-enroll`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Bulk enrollment failed");
+  }
+  return res.json();
+}
+
+/**
  * Delete a student by their database ID.
  * @param {number} studentId
  */
