@@ -22,6 +22,11 @@ services:
       - ./backend/data:/app/data
     environment:
       - PYTHONUNBUFFERED=1      # print logs immediately (no buffering)
+      # Set these in a .env file alongside docker-compose.yml, OR export them
+      # in your shell before `docker compose up`. Defaults: dev fallback + no Google check.
+      - PRESENCE_JWT_SECRET=${PRESENCE_JWT_SECRET:-}
+      - PRESENCE_GOOGLE_CLIENT_ID=${PRESENCE_GOOGLE_CLIENT_ID:-}
+      - PRESENCE_SEED_DEMO=${PRESENCE_SEED_DEMO:-1}
 
   frontend:
     build: ./frontend           # build from frontend/Dockerfile
@@ -33,3 +38,6 @@ services:
       # Tell vite.config.js to proxy /api to the backend container.
       # "backend" here is the service name above — Docker resolves it automatically.
       - BACKEND_URL=http://backend:8000
+      # Optional Google OAuth client id. Leave unset to disable Google sign-in
+      # (the demo button still works).
+      - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID:-}

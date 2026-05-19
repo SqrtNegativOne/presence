@@ -1,9 +1,12 @@
 import React, { useRef, useState } from "react";
-import { downloadCsv, processAttendance } from "../api";
+import { downloadCsv, getToken, processAttendance } from "../api";
+import { useAuth } from "../auth/AuthContext";
 
 export default function AttendancePage() {
+  const { user } = useAuth();
+
   // Form state
-  const [className, setClassName] = useState("");
+  const [className, setClassName] = useState(user?.is_demo ? "Demo-Class" : "");
   const [date, setDate]           = useState(todayStr());
   const [photo, setPhoto]         = useState(null);
 
@@ -19,6 +22,29 @@ export default function AttendancePage() {
     // Clear previous results whenever a new photo is selected
     setResult(null);
     setError(null);
+  }
+
+  async function loadDemoPhoto() {
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/attendance/demo-group-photo", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Could not load demo photo");
+      const blob = await res.blob();
+      const file = new File([blob], "demo_group.jpg", { type: "image/jpeg" });
+      setPhoto(file);
+      // Sync the visible file input value so the user sees a non-empty picker.
+      // (DataTransfer is the cleanest cross-browser approach.)
+      if (fileInputRef.current) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInputRef.current.files = dt.files;
+      }
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function handleSubmit(e) {
@@ -110,7 +136,19 @@ export default function AttendancePage() {
             </div>
 
             <div>
-              <label className="field-label">Group Photo</label>
+              <div className="flex items-end justify-between mb-1">
+                <label className="field-label" style={{ marginBottom: 0 }}>Group Photo</label>
+                {user?.is_demo && (
+                  <button
+                    type="button"
+                    onClick={loadDemoPhoto}
+                    className="text-[0.65rem] tracking-[0.15em] uppercase font-semibold transition-colors duration-150"
+                    style={{ color: "var(--col-accent)" }}
+                  >
+                    Use sample →
+                  </button>
+                )}
+              </div>
               <div
                 style={{
                   borderLeft: "2px solid var(--col-border2)",
@@ -127,6 +165,11 @@ export default function AttendancePage() {
                   style={{ color: "var(--col-muted)" }}
                 />
               </div>
+              {photo && photo.name === "demo_group.jpg" && (
+                <p className="text-xs mt-1.5" style={{ color: "var(--col-muted)" }}>
+                  Sample group photo loaded — the four demo students should be recognized.
+                </p>
+              )}
             </div>
 
             {error && (

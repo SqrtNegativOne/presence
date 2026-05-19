@@ -1,68 +1,97 @@
 """
-face_service.py — All face recognition logic using InsightFace (ArcFace / buffalo_l).
+face_service.py — orchestrates a chosen recognizer + a per-user embedding cache.
 
-KEY CONCEPTS:
-- FaceAnalysis is a pipeline: it detects faces in an image AND computes a 512-d
-  "embedding" (a vector of numbers) for each face.
-- Two faces of the same person produce similar embeddings; different people produce
-  different embeddings. We measure similarity with cosine similarity (0.0–1.0).
-- Threshold 0.4: if similarity > 0.4, we consider it the same person.
-  ArcFace embeddings are L2-normalised, so cosine similarity is equivalent to dot product.
+What changed vs. the original single-engine version:
+- The recognizer is pluggable (see recognizers/). Each call picks one by name.
+- Matching is fully vectorized: every embedding is L2-normalized at ingest, so
+  cosine similarity collapses to a single (N×D) · (D×M) matmul. For a class of
+  30 with 20 faces in the photo, that's ~600 Python-level ops replaced by one
+  BLAS call.
+- A per-(user_id, recognizer_name) cache holds the pre-stacked (M, D) student
+  matrix plus parallel metadata, so the hot path no longer reads from SQLite
+  or unpickles per request. Mutations invalidate the affected cache entry.
 """
+from __future__ import annotations
 
-from pathlib import Path
+import threading
 from typing import Optional
 
 import cv2
 import numpy as np
 from loguru import logger
 
-# InsightFace's main class — handles detection + recognition in one shot.
-from insightface.app import FaceAnalysis
+import database
+from recognizers import (
+    DetectedFace,
+    FaceRecognizer,
+    default_name,
+    get_recognizer,
+    list_available,
+)
 
-# We cache the model in our own data/ folder so it's project-local.
-MODEL_CACHE_DIR = str(Path(__file__).parent.parent / "data")
-
-# Cosine similarity threshold. Tuned for ArcFace 512-d embeddings.
-# Higher value = stricter match (fewer false positives, more unknowns).
-THRESHOLD = 0.4
 
 # ---------------------------------------------------------------------------
-# Singleton: load the model exactly once when this module is first imported.
-# Loading takes ~5s and uses ~500 MB of disk. We don't want to do it per request.
+# Embedding cache: { (user_id, recognizer_name): _CachedStudents }
 # ---------------------------------------------------------------------------
-_face_app: Optional[FaceAnalysis] = None
+class _CachedStudents:
+    __slots__ = ("matrix", "meta")
+
+    def __init__(self, matrix: np.ndarray, meta: list[dict]) -> None:
+        self.matrix = matrix     # shape (M, D), float32, rows L2-normalized
+        self.meta = meta         # parallel list: [{id, name, roll_number, class_name}, ...]
 
 
-def get_face_app() -> FaceAnalysis:
+_cache: dict[tuple[int, str], _CachedStudents] = {}
+_cache_lock = threading.Lock()
+
+
+def invalidate_cache(user_id: Optional[int] = None, recognizer_name: Optional[str] = None) -> None:
+    """Drop cached student matrices. Call after enroll/delete.
+
+    With no args, drops everything. With just user_id, drops all recognizers
+    for that user. With both, drops the precise (user, recognizer) entry.
     """
-    Return the shared FaceAnalysis instance, creating it on first call.
-    On first run ever, InsightFace downloads buffalo_l (~500 MB) to ~/.insightface/.
-    Subsequent runs load from the local cache in seconds.
-    """
-    global _face_app
-    if _face_app is None:
-        logger.info("Loading InsightFace buffalo_l model (first run may download ~500 MB)…")
-        _face_app = FaceAnalysis(
-            name="buffalo_l",
-            root=MODEL_CACHE_DIR,          # cache models here instead of ~/.insightface
-            providers=["CPUExecutionProvider"],  # we don't require a GPU
-        )
-        # det_size: the resolution InsightFace internally resizes to before detection.
-        # 640×640 gives a good balance of speed and accuracy for group photos.
-        _face_app.prepare(ctx_id=0, det_size=(640, 640))
-        logger.success("InsightFace model loaded.")
-    return _face_app
+    with _cache_lock:
+        if user_id is None:
+            _cache.clear()
+            return
+        for key in [k for k in _cache if k[0] == user_id
+                    and (recognizer_name is None or k[1] == recognizer_name)]:
+            _cache.pop(key, None)
+
+
+def _load_cache(user_id: int, recognizer_name: str) -> _CachedStudents:
+    key = (user_id, recognizer_name)
+    with _cache_lock:
+        cached = _cache.get(key)
+    if cached is not None:
+        return cached
+
+    rows = database.get_user_students_with_embeddings(user_id, recognizer_name)
+    if rows:
+        matrix = np.vstack([r["face_embedding"] for r in rows]).astype(np.float32, copy=False)
+        # Re-assert L2 normalization defensively (older rows might not be normalized)
+        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        matrix = matrix / norms
+    else:
+        matrix = np.zeros((0, 0), dtype=np.float32)
+    meta = [{"id": r["id"], "name": r["name"],
+             "roll_number": r["roll_number"], "class_name": r["class_name"]}
+            for r in rows]
+
+    cached = _CachedStudents(matrix, meta)
+    with _cache_lock:
+        _cache[key] = cached
+    return cached
 
 
 # ---------------------------------------------------------------------------
-# Helper: bytes → numpy image (BGR, which OpenCV and InsightFace expect)
+# Image decode helper
 # ---------------------------------------------------------------------------
-
 def _bytes_to_bgr(image_bytes: bytes) -> np.ndarray:
-    """Decode raw image bytes (JPEG/PNG/etc.) into a numpy BGR array."""
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # result is BGR
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("Could not decode image. Make sure it is a valid JPEG or PNG.")
     return img
@@ -71,18 +100,18 @@ def _bytes_to_bgr(image_bytes: bytes) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+def available_recognizers() -> list[dict]:
+    return list_available()
 
-def encode_single_face(image_bytes: bytes) -> np.ndarray:
-    """
-    Given a solo-portrait image (bytes), detect exactly one face and return its
-    512-d float32 embedding.
 
-    Raises ValueError if 0 or >1 faces are found — enrollment must be solo.
+def encode_single_face(image_bytes: bytes, recognizer_name: str) -> tuple[np.ndarray, str]:
+    """Detect exactly one face in a portrait. Returns (embedding, recognizer_name).
+
+    Embedding is L2-normalized float32.
     """
-    app = get_face_app()
+    rec: FaceRecognizer = get_recognizer(recognizer_name)
     img_bgr = _bytes_to_bgr(image_bytes)
-    faces = app.get(img_bgr)  # list of Face objects
-
+    faces = rec.detect_and_encode(img_bgr)
     if len(faces) == 0:
         raise ValueError(
             "No face detected in the enrollment photo. "
@@ -92,86 +121,68 @@ def encode_single_face(image_bytes: bytes) -> np.ndarray:
         raise ValueError(
             f"{len(faces)} faces detected. Enrollment photos must contain exactly one person."
         )
-
-    embedding = faces[0].embedding  # shape (512,), dtype float32
-    logger.debug(f"Encoded single face, embedding norm={np.linalg.norm(embedding):.4f}")
-    return embedding
+    return faces[0].embedding.astype(np.float32, copy=False), recognizer_name
 
 
-def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[dict]:
+def match_group_photo(
+    image_bytes: bytes,
+    user_id: int,
+    recognizer_name: str,
+) -> list[dict]:
+    """Detect every face in a photo and match it against the user's enrolled students.
+
+    Uses a single BLAS matmul over the cached embedding matrix.
     """
-    Detect all faces in a group photo and match each to the known students.
-
-    Args:
-        image_bytes: raw bytes of the group photo
-        known_students: list of dicts with keys: id, name, roll_number, class_name, face_embedding (numpy array)
-
-    Returns:
-        List of dicts, one per detected face:
-            {
-              "face_index":  int,        # 1-based display index
-              "bbox":        [x1,y1,x2,y2],  # pixel coords for annotation
-              "name":        str,         # student name or "Unknown"
-              "roll_number": str | None,
-              "class_name":  str | None,
-              "status":      "recognized" | "unknown",
-              "similarity":  float,       # best cosine similarity found
-            }
-    """
-    app = get_face_app()
+    rec: FaceRecognizer = get_recognizer(recognizer_name)
     img_bgr = _bytes_to_bgr(image_bytes)
-    faces = app.get(img_bgr)
+    faces: list[DetectedFace] = rec.detect_and_encode(img_bgr)
+    logger.info(f"[{recognizer_name}] detected {len(faces)} faces")
 
-    logger.info(f"Detected {len(faces)} faces in group photo")
-    results = []
+    cached = _load_cache(user_id, recognizer_name)
+    threshold = rec.threshold
 
+    if cached.matrix.shape[0] == 0 or len(faces) == 0:
+        # Nothing to match against, or no faces — emit "unknown" results
+        return [_unknown_result(i, f) for i, f in enumerate(faces)]
+
+    # Stack query embeddings: shape (N, D). Both sides already L2-normalized.
+    query = np.vstack([f.embedding for f in faces]).astype(np.float32, copy=False)
+    # Defensive normalize (no-op for ArcFace, cheap)
+    q_norm = np.linalg.norm(query, axis=1, keepdims=True)
+    q_norm[q_norm == 0] = 1.0
+    query = query / q_norm
+
+    # Single matmul: (N, D) @ (D, M) -> (N, M) cosine similarity matrix.
+    sims = query @ cached.matrix.T
+    best_idx = sims.argmax(axis=1)
+    best_sim = sims[np.arange(len(faces)), best_idx]
+
+    results: list[dict] = []
     for i, face in enumerate(faces):
-        bbox = [int(v) for v in face.bbox]  # [x1, y1, x2, y2]
-        query_embedding = face.embedding     # 512-d float32
-
-        best_match = None
-        best_similarity = -1.0
-
-        for student in known_students:
-            sim = _cosine_similarity(query_embedding, student["face_embedding"])
-            if sim > best_similarity:
-                best_similarity = sim
-                best_match = student
-
-        if best_similarity >= THRESHOLD and best_match is not None:
+        sim = float(best_sim[i])
+        if sim >= threshold:
+            m = cached.meta[int(best_idx[i])]
             results.append({
                 "face_index": i + 1,
-                "bbox": bbox,
-                "name": best_match["name"],
-                "roll_number": best_match["roll_number"],
-                "class_name": best_match["class_name"],
+                "bbox": list(face.bbox),
+                "name": m["name"],
+                "roll_number": m["roll_number"],
+                "class_name": m["class_name"],
                 "status": "recognized",
-                "similarity": round(float(best_similarity), 4),
+                "similarity": round(sim, 4),
             })
-            logger.debug(f"Face {i+1}: {best_match['name']} (similarity={best_similarity:.4f})")
         else:
-            results.append({
-                "face_index": i + 1,
-                "bbox": bbox,
-                "name": "Unknown",
-                "roll_number": None,
-                "class_name": None,
-                "status": "unknown",
-                "similarity": round(float(best_similarity), 4),
-            })
-            logger.debug(f"Face {i+1}: Unknown (best similarity={best_similarity:.4f})")
-
+            results.append(_unknown_result(i, face, sim))
     return results
 
 
-def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """
-    Cosine similarity between two vectors: dot(a,b) / (|a| * |b|).
-    ArcFace embeddings are already L2-normalised, so this equals the dot product.
-    Returns a float in [-1, 1]; higher = more similar.
-    """
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return float(np.dot(a, b) / (norm_a * norm_b))
+def _unknown_result(i: int, face: DetectedFace, sim: float = -1.0) -> dict:
+    return {
+        "face_index": i + 1,
+        "bbox": list(face.bbox),
+        "name": "Unknown",
+        "roll_number": None,
+        "class_name": None,
+        "status": "unknown",
+        "similarity": round(sim, 4),
+    }

@@ -1,15 +1,23 @@
 [project]
 name = "presence-backend"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "python-multipart>=0.0.12",
+    # Face recognition engines
     "insightface>=0.7.3",
     "onnxruntime>=1.18.0",
+    "mediapipe>=0.10.14",
+    # Imaging
     "Pillow>=10.0.0",
     "opencv-python-headless>=4.10.0",
     "numpy>=1.26.0",
+    # Auth
+    "pyjwt>=2.9.0",
+    "google-auth>=2.35.0",
+    # Other
+    "pydantic>=2.9.0",
     "loguru>=0.7.0",
 ]

@@ -1,68 +1,66 @@
 """
-routers/students.py — Endpoints for enrolling and managing students.
-
-FastAPI routers are mini-applications that group related endpoints.
-They're registered in main.py with app.include_router(...).
+routers/students.py — Enrol and manage students. All operations are scoped to
+the authenticated user; one teacher's roster is invisible to another.
 """
+from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from loguru import logger
 
 import database
-from services.face_service import encode_single_face
+from auth.dependencies import get_current_user
+from services.face_service import encode_single_face, invalidate_cache
 
 router = APIRouter(prefix="/api/students", tags=["students"])
 
 
 @router.post("/enroll")
 async def enroll_student(
-    name: str = Form(...),          # Form(...) means required form field
+    name: str = Form(...),
     roll_number: str = Form(...),
     class_name: str = Form(...),
-    photo: UploadFile = File(...),  # uploaded image file
+    photo: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
 ):
-    """
-    Enroll a new student by uploading their solo portrait.
-
-    Steps:
-    1. Read the uploaded image bytes
-    2. Detect the single face and compute its 512-d embedding
-    3. Store name/roll/class + embedding in SQLite
-    """
     image_bytes = await photo.read()
-
+    recognizer_name = user["preferred_recognizer"]
     try:
-        embedding = encode_single_face(image_bytes)
+        embedding, _ = encode_single_face(image_bytes, recognizer_name)
     except ValueError as e:
-        # This catches "no face" or "multiple faces" errors from face_service
         raise HTTPException(status_code=400, detail=str(e))
 
     try:
-        student_id = database.insert_student(name.strip(), roll_number.strip(), class_name.strip(), embedding)
+        student_id = database.insert_student(
+            user["id"], name.strip(), roll_number.strip(), class_name.strip(),
+            embedding, recognizer_name,
+        )
     except Exception as e:
-        # The most likely error here is a UNIQUE constraint violation on roll_number
         if "UNIQUE" in str(e):
-            raise HTTPException(status_code=409, detail=f"Roll number '{roll_number}' is already enrolled.")
+            raise HTTPException(status_code=409,
+                                detail=f"Roll number '{roll_number}' is already enrolled.")
         logger.error(f"DB insert failed: {e}")
         raise HTTPException(status_code=500, detail="Database error during enrollment.")
 
-    return {"id": student_id, "name": name, "roll_number": roll_number, "class_name": class_name}
+    invalidate_cache(user["id"], recognizer_name)
+    return {
+        "id": student_id, "name": name, "roll_number": roll_number,
+        "class_name": class_name, "recognizer_name": recognizer_name,
+    }
 
 
 @router.get("")
-async def list_students(class_name: str | None = None):
-    """
-    Return all students, optionally filtered by class_name query param.
-    Example: GET /api/students?class_name=10-A
-    """
-    students = database.get_all_students(class_name)
+async def list_students(class_name: str | None = None,
+                        user: dict = Depends(get_current_user)):
+    students = database.get_user_students(user["id"], class_name)
     return {"students": students, "count": len(students)}
 
 
 @router.delete("/{student_id}")
-async def remove_student(student_id: int):
-    """Delete a student by their database ID."""
-    deleted = database.delete_student(student_id)
+async def remove_student(student_id: int,
+                         user: dict = Depends(get_current_user)):
+    deleted = database.delete_student(user["id"], student_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail=f"Student with id={student_id} not found.")
+        raise HTTPException(status_code=404,
+                            detail=f"Student with id={student_id} not found.")
+    invalidate_cache(user["id"])
     return {"message": f"Student {student_id} deleted successfully."}
