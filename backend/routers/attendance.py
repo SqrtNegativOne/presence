@@ -134,13 +134,24 @@ async def export_csv(
 _DEMO_GROUP_PHOTO = Path(__file__).parent.parent / "demo_assets" / "group" / "class.jpg"
 
 
+@router.get("/demo-classes")
+async def list_demo_sample_classes(user: dict = Depends(get_current_user)):
+    """List the demo classes bundled with the app (synthetic + Apollo 11)."""
+    from seed_demo import list_demo_classes
+    return {"classes": list_demo_classes()}
+
+
 @router.get("/demo-group-photo")
-async def demo_group_photo(user: dict = Depends(get_current_user)):
-    """Serve the bundled demo group photo. Available to any signed-in user."""
-    if not _DEMO_GROUP_PHOTO.exists():
-        raise HTTPException(status_code=404, detail="Demo photo not bundled.")
-    return FileResponse(_DEMO_GROUP_PHOTO, media_type="image/jpeg",
-                        filename="demo_group.jpg")
+async def demo_group_photo(class_name: str = Query("Demo-Class"),
+                           user: dict = Depends(get_current_user)):
+    """Serve the bundled group photo for a demo class."""
+    from seed_demo import demo_group_photo as resolve
+    path = resolve(class_name)
+    if not path:
+        raise HTTPException(status_code=404,
+                            detail=f"No demo group photo for class '{class_name}'.")
+    return FileResponse(path, media_type="image/jpeg",
+                        filename=f"demo_{class_name}.jpg")
 
 
 @router.get("/history")

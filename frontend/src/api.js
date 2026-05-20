@@ -112,6 +112,18 @@ export async function deleteStudent(studentId) {
 
 // ── Attendance ──────────────────────────────────────────────────────────────
 
+export async function listDemoClasses() {
+  const res = await request(`${BASE}/attendance/demo-classes`);
+  return res.json();
+}
+
+export async function fetchDemoGroupPhoto(className) {
+  const res = await request(
+    `${BASE}/attendance/demo-group-photo?class_name=${encodeURIComponent(className)}`,
+  );
+  return res.blob();
+}
+
 export async function processAttendance(formData) {
   const res = await request(`${BASE}/attendance/process`, {
     method: "POST",

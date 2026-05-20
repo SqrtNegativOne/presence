@@ -1,5 +1,5 @@
-import React, { useRef, useState } from "react";
-import { downloadCsv, getToken, processAttendance } from "../api";
+import React, { useEffect, useRef, useState } from "react";
+import { downloadCsv, fetchDemoGroupPhoto, listDemoClasses, processAttendance } from "../api";
 import { useAuth } from "../auth/AuthContext";
 
 export default function AttendancePage() {
@@ -17,26 +17,29 @@ export default function AttendancePage() {
 
   const fileInputRef = useRef(null);
 
+  // Demo: list of {class_name, display_name, description, has_group_photo}
+  const [demoClasses, setDemoClasses] = useState([]);
+  useEffect(() => {
+    if (!user?.is_demo) return;
+    listDemoClasses()
+      .then((d) => setDemoClasses(d.classes || []))
+      .catch(() => {});
+  }, [user?.is_demo]);
+
   function handlePhotoChange(e) {
     setPhoto(e.target.files[0] || null);
-    // Clear previous results whenever a new photo is selected
     setResult(null);
     setError(null);
   }
 
-  async function loadDemoPhoto() {
+  async function loadDemoPhoto(cls) {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch("/api/attendance/demo-group-photo", {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!res.ok) throw new Error("Could not load demo photo");
-      const blob = await res.blob();
-      const file = new File([blob], "demo_group.jpg", { type: "image/jpeg" });
+      const blob = await fetchDemoGroupPhoto(cls.class_name);
+      const file = new File([blob], `demo_${cls.class_name}.jpg`, { type: "image/jpeg" });
       setPhoto(file);
-      // Sync the visible file input value so the user sees a non-empty picker.
-      // (DataTransfer is the cleanest cross-browser approach.)
+      setClassName(cls.class_name);
       if (fileInputRef.current) {
         const dt = new DataTransfer();
         dt.items.add(file);
@@ -136,19 +139,34 @@ export default function AttendancePage() {
             </div>
 
             <div>
-              <div className="flex items-end justify-between mb-1">
-                <label className="field-label" style={{ marginBottom: 0 }}>Group Photo</label>
-                {user?.is_demo && (
-                  <button
-                    type="button"
-                    onClick={loadDemoPhoto}
-                    className="text-[0.65rem] tracking-[0.15em] uppercase font-semibold transition-colors duration-150"
-                    style={{ color: "var(--col-accent)" }}
+              <label className="field-label">Group Photo</label>
+              {user?.is_demo && demoClasses.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className="text-[0.65rem] tracking-[0.15em] uppercase font-semibold"
+                    style={{ color: "var(--col-muted)" }}
                   >
-                    Use sample →
-                  </button>
-                )}
-              </div>
+                    Samples:
+                  </span>
+                  {demoClasses.filter((c) => c.has_group_photo).map((c) => (
+                    <button
+                      key={c.class_name}
+                      type="button"
+                      onClick={() => loadDemoPhoto(c)}
+                      title={c.description}
+                      className="text-[0.65rem] tracking-[0.15em] uppercase font-semibold px-2 py-1 transition-colors duration-150"
+                      style={{
+                        border: "1px solid var(--col-border2)",
+                        color: "var(--col-accent)",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--col-accent)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--col-border2)")}
+                    >
+                      {c.display_name} →
+                    </button>
+                  ))}
+                </div>
+              )}
               <div
                 style={{
                   borderLeft: "2px solid var(--col-border2)",
@@ -165,9 +183,9 @@ export default function AttendancePage() {
                   style={{ color: "var(--col-muted)" }}
                 />
               </div>
-              {photo && photo.name === "demo_group.jpg" && (
+              {photo && photo.name?.startsWith("demo_") && (
                 <p className="text-xs mt-1.5" style={{ color: "var(--col-muted)" }}>
-                  Sample group photo loaded — the four demo students should be recognized.
+                  Sample loaded — class set to <code>{className}</code>. Click Process to match.
                 </p>
               )}
             </div>
