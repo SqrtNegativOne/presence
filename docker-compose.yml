@@ -16,10 +16,10 @@ services:
     ports:
       - "8000:8000"             # host:container — visit localhost:8000/docs
     volumes:
-      # Mount the data/ folder from your machine into the container.
-      # This means the SQLite database and downloaded InsightFace model
-      # survive container restarts — they live on your disk, not inside Docker.
-      - ./backend/data:/app/data
+      # Mount a named volume into the container.
+      # This prevents filesystem locking issues with SQLite on Windows
+      # while still ensuring your database survives container restarts.
+      - presence_data:/app/data
     environment:
       - PYTHONUNBUFFERED=1      # print logs immediately (no buffering)
 
@@ -33,3 +33,6 @@ services:
       # Tell vite.config.js to proxy /api to the backend container.
       # "backend" here is the service name above — Docker resolves it automatically.
       - BACKEND_URL=http://backend:8000
+
+volumes:
+  presence_data:

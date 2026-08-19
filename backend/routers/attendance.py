@@ -34,8 +34,8 @@ async def process_attendance(
 
     image_bytes = await photo.read()
 
-    # Load all enrolled students (with their embeddings) from the database
-    all_students = database.get_all_students_with_embeddings()
+    # Load enrolled students for this class (with their embeddings) from the database
+    all_students = database.get_all_students_with_embeddings(class_name)
     if not all_students:
         raise HTTPException(
             status_code=400,
@@ -98,13 +98,10 @@ async def export_csv(
 
     if roll_list:
         # Look up each recognized student from the DB
-        all_students = database.get_all_students()
-        student_map = {s["roll_number"]: s for s in all_students}
+        matched_students = database.get_students_by_roll_numbers(roll_list)
 
-        for roll in roll_list:
-            if roll in student_map:
-                s = student_map[roll]
-                writer.writerow([s["name"], s["roll_number"], s["class_name"], attendance_date, "Present"])
+        for s in matched_students:
+            writer.writerow([s["name"], s["roll_number"], s["class_name"], attendance_date, "Present"])
 
     output.seek(0)
 

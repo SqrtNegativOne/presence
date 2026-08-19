@@ -39,6 +39,7 @@ def init_db() -> None:
                 enrolled_at     TEXT    DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_class_name ON students(class_name);")
         conn.commit()
     logger.info(f"Database ready at {DB_PATH}")
 
@@ -81,14 +82,15 @@ def get_all_students(class_name: Optional[str] = None) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def get_all_students_with_embeddings() -> list[dict]:
+def get_all_students_with_embeddings(class_name: str) -> list[dict]:
     """
-    Return all students including their embeddings (for attendance matching).
+    Return all students in a specific class including their embeddings (for attendance matching).
     Embeddings are decoded back to numpy arrays here.
     """
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT id, name, roll_number, class_name, face_embedding FROM students"
+            "SELECT id, name, roll_number, class_name, face_embedding FROM students WHERE class_name = ?",
+            (class_name,)
         ).fetchall()
 
     result = []
@@ -97,6 +99,20 @@ def get_all_students_with_embeddings() -> list[dict]:
         d["face_embedding"] = pickle.loads(d["face_embedding"])  # bytes → numpy array
         result.append(d)
     return result
+
+
+def get_students_by_roll_numbers(roll_numbers: list[str]) -> list[dict]:
+    """Return specific students by their roll numbers."""
+    if not roll_numbers:
+        return []
+    
+    # Create a parameter placeholder string like "?, ?, ?"
+    placeholders = ",".join("?" * len(roll_numbers))
+    query = f"SELECT name, roll_number, class_name FROM students WHERE roll_number IN ({placeholders})"
+    
+    with get_connection() as conn:
+        rows = conn.execute(query, roll_numbers).fetchall()
+    return [dict(row) for row in rows]
 
 
 def delete_student(student_id: int) -> bool:

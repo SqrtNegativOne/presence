@@ -46,7 +46,7 @@ def get_face_app() -> FaceAnalysis:
         _face_app = FaceAnalysis(
             name="buffalo_l",
             root=MODEL_CACHE_DIR,          # cache models here instead of ~/.insightface
-            providers=["CPUExecutionProvider"],  # we don't require a GPU
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],  # try GPU, fall back to CPU
         )
         # det_size: the resolution InsightFace internally resizes to before detection.
         # 640×640 gives a good balance of speed and accuracy for group photos.
@@ -125,20 +125,42 @@ def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[di
     logger.info(f"Detected {len(faces)} faces in group photo")
     results = []
 
+    # Pre-compute matrix of all known embeddings for fast vectorized operations
+    if known_students:
+        known_embeddings = np.array([s["face_embedding"] for s in known_students])
+    
+    matched_student_ids = set()
+
     for i, face in enumerate(faces):
         bbox = [int(v) for v in face.bbox]  # [x1, y1, x2, y2]
         query_embedding = face.embedding     # 512-d float32
 
         best_match = None
         best_similarity = -1.0
+        max_sim_for_face = 0.0
+        
+        if known_students:
+            # Compute similarity of this face against ALL known students in a single vectorized operation
+            # ArcFace embeddings are L2-normalised, so dot product equals cosine similarity
+            similarities = np.dot(known_embeddings, query_embedding)
+            max_sim_for_face = float(np.max(similarities))
+            
+            # Sort indices by similarity descending
+            sorted_indices = np.argsort(similarities)[::-1]
+            
+            for idx in sorted_indices:
+                sim = similarities[idx]
+                if sim < THRESHOLD:
+                    break  # Remaining matches are even lower, stop checking
+                
+                student = known_students[idx]
+                if student["id"] not in matched_student_ids:
+                    best_match = student
+                    best_similarity = float(sim)
+                    break
 
-        for student in known_students:
-            sim = _cosine_similarity(query_embedding, student["face_embedding"])
-            if sim > best_similarity:
-                best_similarity = sim
-                best_match = student
-
-        if best_similarity >= THRESHOLD and best_match is not None:
+        if best_match is not None:
+            matched_student_ids.add(best_match["id"])
             results.append({
                 "face_index": i + 1,
                 "bbox": bbox,
@@ -146,7 +168,7 @@ def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[di
                 "roll_number": best_match["roll_number"],
                 "class_name": best_match["class_name"],
                 "status": "recognized",
-                "similarity": round(float(best_similarity), 4),
+                "similarity": round(best_similarity, 4),
             })
             logger.debug(f"Face {i+1}: {best_match['name']} (similarity={best_similarity:.4f})")
         else:
@@ -157,21 +179,8 @@ def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[di
                 "roll_number": None,
                 "class_name": None,
                 "status": "unknown",
-                "similarity": round(float(best_similarity), 4),
+                "similarity": round(max_sim_for_face, 4),
             })
-            logger.debug(f"Face {i+1}: Unknown (best similarity={best_similarity:.4f})")
+            logger.debug(f"Face {i+1}: Unknown")
 
     return results
-
-
-def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """
-    Cosine similarity between two vectors: dot(a,b) / (|a| * |b|).
-    ArcFace embeddings are already L2-normalised, so this equals the dot product.
-    Returns a float in [-1, 1]; higher = more similar.
-    """
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return float(np.dot(a, b) / (norm_a * norm_b))
