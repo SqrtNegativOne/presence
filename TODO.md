@@ -19,9 +19,9 @@ embedding = np.frombuffer(d["face_embedding"], dtype=np.float32)   # load: safe,
 ```
 
 **Files to change:**
-- [ ] `backend/database.py` — `insert_student()` (line 56), `get_all_students_with_embeddings()` (line 99)
-- [ ] Remove `import pickle`
-- [ ] Write a one-time migration script (`scripts/migrate_pickle_to_bytes.py`) that reads existing BLOBs with pickle and re-writes them with tobytes, so existing databases aren't broken
+- [x] `backend/database.py` — `insert_student()` (line 56), `get_all_students_with_embeddings()` (line 99)
+- [x] Remove `import pickle`
+- [x] Write a one-time migration script (`scripts/migrate_pickle_to_bytes.py`) that reads existing BLOBs with pickle and re-writes them with tobytes, so existing databases aren't broken
 
 
 ### 0.2 — Persist Attendance in the Database
@@ -53,11 +53,11 @@ CREATE TABLE attendance_records (
 ```
 
 **Changes:**
-- [ ] `backend/database.py` — Add `create_attendance_session()`, `insert_attendance_records()`, `get_attendance_history()`, `get_session_detail()`
-- [ ] `backend/routers/attendance.py` — After `match_group_photo()` succeeds, persist the session and all records (both present AND absent students)
-- [ ] `backend/routers/attendance.py` — Rewrite `/export` to pull from the DB instead of from query-string roll numbers
-- [ ] New endpoint: `GET /api/attendance/history?class_name=10-A` — returns past sessions
-- [ ] New endpoint: `GET /api/attendance/sessions/{id}` — returns full detail for one session
+- [x] `backend/database.py` — Add `create_attendance_session()`, `insert_attendance_records()`, `get_attendance_history()`, `get_session_detail()`
+- [x] `backend/routers/attendance.py` — After `match_group_photo()` succeeds, persist the session and all records (both present AND absent students)
+- [x] `backend/routers/attendance.py` — Rewrite `/export` to pull from the DB instead of from query-string roll numbers
+- [x] New endpoint: `GET /api/attendance/history?class_name=10-A` — returns past sessions
+- [x] New endpoint: `GET /api/attendance/sessions/{id}` — returns full detail for one session
 
 ### 0.3 — Track Absences
 
@@ -69,9 +69,9 @@ recognized_ids = {r["student_id"] for r in records if r["status"] == "present"}
 absent_ids = enrolled_ids - recognized_ids
 ```
 
-- [ ] Include absent students in the results response (status: `"absent"`)
-- [ ] Include absent students in the CSV export
-- [ ] Show absent students in the frontend results table (greyed out or red)
+- [x] Include absent students in the results response (status: `"absent"`)
+- [x] Include absent students in the CSV export
+- [x] Show absent students in the frontend results table (greyed out or red)
 
 ## Phase 1: Camera Capture + Model Selection (3–5 days)
 
@@ -427,16 +427,16 @@ backend/
 ```
 
 **Key tests to write:**
-- [ ] `test_enroll_student` — happy path, returns student ID
-- [ ] `test_enroll_duplicate_roll_number` — returns HTTP 409
-- [ ] `test_enroll_no_face` — returns HTTP 400 with message
-- [ ] `test_enroll_multiple_faces` — returns HTTP 400 with message
-- [ ] `test_list_students_by_class` — filter works correctly
-- [ ] `test_delete_student` — deletes and returns 200; deleting again returns 404
-- [ ] `test_matching_above_threshold` — similarity 0.41 → recognized
-- [ ] `test_matching_below_threshold` — similarity 0.39 → unknown
-- [ ] `test_csv_export_format` — correct headers, correct data
-- [ ] `test_attendance_persistence` — session and records saved to DB
+- [x] `test_enroll_student` — happy path, returns student ID
+- [x] `test_enroll_duplicate_roll_number` — returns HTTP 409
+- [x] `test_enroll_no_face` — returns HTTP 400 with message
+- [x] `test_enroll_multiple_faces` — returns HTTP 400 with message
+- [x] `test_list_students_by_class` — filter works correctly
+- [x] `test_delete_student` — deletes and returns 200; deleting again returns 404
+- [x] `test_matching_above_threshold` — similarity 0.41 → recognized
+- [x] `test_matching_below_threshold` — similarity 0.39 → unknown
+- [x] `test_csv_export_format` — correct headers, correct data
+- [x] `test_attendance_persistence` — session and records saved to DB
 
 **Test strategy:** Mock `face_service.get_face_app()` in API tests (don't download the 500 MB model in CI). Use a temporary Postgres test database (or testcontainers-python to spin up a disposable Postgres container per test run). FastAPI's `TestClient` for HTTP-level tests.
 

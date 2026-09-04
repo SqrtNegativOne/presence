@@ -44,17 +44,13 @@ export default function AttendancePage() {
     }
   }
 
-  // Build the export URL and trigger a browser download.
-  // We only include the roll numbers of recognized (present) students.
+  // Build the export URL and trigger a browser download from the DB session.
   function handleExport() {
     if (!result) return;
-    const recognizedRolls = result.results
-      .filter((r) => r.status === "recognized" && r.roll_number)
-      .map((r) => r.roll_number);
     downloadCsv({
-      className:   result.class_name,
-      date:        result.date,
-      rollNumbers: recognizedRolls,
+      sessionId: result.session_id,
+      className: result.class_name,
+      date:      result.date,
     });
   }
 
@@ -179,10 +175,13 @@ export default function AttendancePage() {
 
             <div className="flex items-center gap-3 flex-wrap">
               <span className="badge-present">{result.recognized_count} Present</span>
+              {result.absent_count !== undefined && (
+                <span className="badge-absent">{result.absent_count} Absent</span>
+              )}
               <span className="badge-unknown">{result.unknown_count} Unknown</span>
               <button
                 onClick={handleExport}
-                disabled={result.recognized_count === 0}
+                disabled={!result.session_id && result.recognized_count === 0}
                 className="btn-ghost"
               >
                 Export CSV
@@ -241,36 +240,54 @@ export default function AttendancePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {result.results.map((r) => (
-                      <tr
-                        key={r.face_index}
-                        style={{ borderBottom: "1px solid rgba(28,28,56,0.8)" }}
-                      >
-                        <td
-                          className="px-4 py-3 text-xs font-mono"
-                          style={{ color: "var(--col-muted)" }}
-                        >
-                          {r.face_index}
-                        </td>
-                        <td className="px-4 py-3 font-medium">{r.name}</td>
-                        <td
-                          className="px-4 py-3 text-xs"
+                    {result.results.map((r, idx) => {
+                      const isAbsent = r.status === "absent";
+                      const rowKey =
+                        r.face_index != null
+                          ? `face-${r.face_index}`
+                          : `student-${r.student_id || r.roll_number || idx}`;
+                      return (
+                        <tr
+                          key={rowKey}
                           style={{
-                            fontFamily: "'Space Mono', monospace",
-                            color: "var(--col-muted)",
+                            borderBottom: "1px solid rgba(28,28,56,0.8)",
+                            opacity: isAbsent ? 0.6 : 1,
                           }}
                         >
-                          {r.roll_number ?? "—"}
-                        </td>
-                        <td className="px-4 py-3">
-                          {r.status === "recognized" ? (
-                            <span className="badge-present">Present</span>
-                          ) : (
-                            <span className="badge-unknown">Unknown</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          <td
+                            className="px-4 py-3 text-xs font-mono"
+                            style={{ color: "var(--col-muted)" }}
+                          >
+                            {r.face_index != null ? r.face_index : "—"}
+                          </td>
+                          <td
+                            className={`px-4 py-3 font-medium ${
+                              isAbsent ? "text-[var(--col-muted)]" : ""
+                            }`}
+                          >
+                            {r.name}
+                          </td>
+                          <td
+                            className="px-4 py-3 text-xs"
+                            style={{
+                              fontFamily: "'Space Mono', monospace",
+                              color: "var(--col-muted)",
+                            }}
+                          >
+                            {r.roll_number ?? "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            {r.status === "recognized" ? (
+                              <span className="badge-present">Present</span>
+                            ) : r.status === "absent" ? (
+                              <span className="badge-absent">Absent</span>
+                            ) : (
+                              <span className="badge-unknown">Unknown</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

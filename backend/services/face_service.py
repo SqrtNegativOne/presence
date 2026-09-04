@@ -164,6 +164,7 @@ def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[di
             results.append({
                 "face_index": i + 1,
                 "bbox": bbox,
+                "student_id": best_match["id"],
                 "name": best_match["name"],
                 "roll_number": best_match["roll_number"],
                 "class_name": best_match["class_name"],
@@ -175,6 +176,7 @@ def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[di
             results.append({
                 "face_index": i + 1,
                 "bbox": bbox,
+                "student_id": None,
                 "name": "Unknown",
                 "roll_number": None,
                 "class_name": None,

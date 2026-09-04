@@ -1,10 +1,12 @@
 """
-routers/attendance.py — Process a group photo and export attendance CSV.
+routers/attendance.py — Process a group photo, persist sessions/records, and export attendance CSV.
 """
 
 import csv
+import hashlib
 import io
 from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -24,15 +26,13 @@ async def process_attendance(
     attendance_date: str = Form(default=""),  # optional; defaults to today
 ):
     """
-    Upload a group photo → run face recognition → return annotated image + results.
-
-    The heavy lifting happens in face_service.match_group_photo().
-    This endpoint just orchestrates: load DB → run recognition → annotate → respond.
+    Upload a group photo → run face recognition → annotate image → persist session & records → respond.
     """
     if not attendance_date:
         attendance_date = str(date.today())
 
     image_bytes = await photo.read()
+    photo_hash = hashlib.sha256(image_bytes).hexdigest()
 
     # Load enrolled students for this class (with their embeddings) from the database
     all_students = database.get_all_students_with_embeddings(class_name)
@@ -63,51 +63,131 @@ async def process_attendance(
     recognized = [f for f in face_results if f["status"] == "recognized"]
     unknown = [f for f in face_results if f["status"] == "unknown"]
 
+    # Identify absent students (enrolled minus recognized)
+    student_map = {s["id"]: s for s in all_students}
+    enrolled_ids = set(student_map.keys())
+    recognized_ids = {r["student_id"] for r in recognized if r.get("student_id")}
+    absent_ids = enrolled_ids - recognized_ids
+
+    absent_students = [
+        {
+            "face_index": None,
+            "bbox": None,
+            "student_id": student_map[sid]["id"],
+            "name": student_map[sid]["name"],
+            "roll_number": student_map[sid]["roll_number"],
+            "class_name": student_map[sid]["class_name"],
+            "status": "absent",
+            "similarity": None,
+        }
+        for sid in sorted(
+            absent_ids,
+            key=lambda sid: (student_map[sid]["roll_number"], student_map[sid]["name"]),
+        )
+    ]
+
+    # Persist the attendance session
+    session_id = database.create_attendance_session(
+        class_name=class_name,
+        attendance_date=attendance_date,
+        total_faces=len(face_results),
+        recognized_count=len(recognized),
+        unknown_count=len(unknown),
+        photo_hash=photo_hash,
+    )
+
+    # Persist attendance records for all enrolled students
+    records_to_insert = []
+    for r in recognized:
+        records_to_insert.append({
+            "student_id": r["student_id"],
+            "status": "present",
+            "similarity": r.get("similarity"),
+            "face_index": r.get("face_index"),
+        })
+    for a in absent_students:
+        records_to_insert.append({
+            "student_id": a["student_id"],
+            "status": "absent",
+            "similarity": None,
+            "face_index": None,
+        })
+    database.insert_attendance_records(session_id, records_to_insert)
+
     return {
+        "session_id": session_id,
         "annotated_image": annotated_b64,
         "date": attendance_date,
         "class_name": class_name,
-        "results": face_results,
+        "results": face_results + absent_students,
         "total_faces": len(face_results),
         "recognized_count": len(recognized),
         "unknown_count": len(unknown),
+        "absent_count": len(absent_students),
     }
+
+
+@router.get("/history")
+async def get_attendance_history(class_name: Optional[str] = Query(default=None)):
+    """
+    Return past attendance sessions, optionally filtered by class_name.
+    """
+    return database.get_attendance_history(class_name)
+
+
+@router.get("/sessions/{session_id}")
+async def get_session_detail(session_id: int):
+    """
+    Return full details and records for one attendance session.
+    """
+    detail = database.get_session_detail(session_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Attendance session {session_id} not found")
+    return detail
 
 
 @router.get("/export")
 async def export_csv(
-    class_name: str = Query(...),
-    attendance_date: str = Query(...),
-    roll_numbers: str = Query(default=""),  # comma-separated list of recognized roll numbers
+    session_id: Optional[int] = Query(default=None),
+    class_name: Optional[str] = Query(default=None),
+    attendance_date: Optional[str] = Query(default=None),
 ):
     """
-    Stream a CSV file for the recognized students.
-
-    Usage: GET /api/attendance/export?class_name=10-A&date=2026-03-05&roll_numbers=CS101,CS102
-
-    The browser downloads a file named "{date}_{class_name}.csv".
-    StreamingResponse is used so large files don't need to be held in memory.
+    Stream a CSV file from the database for an attendance session.
+    Accepts either session_id, or class_name + attendance_date.
+    Includes both Present and Absent students.
     """
-    # Parse the comma-separated roll numbers
-    roll_list = [r.strip() for r in roll_numbers.split(",") if r.strip()] if roll_numbers else []
+    session_detail = None
+    if session_id is not None:
+        session_detail = database.get_session_detail(session_id)
+    elif class_name and attendance_date:
+        session_detail = database.get_session_by_class_and_date(class_name, attendance_date)
 
-    # Build CSV in memory (small enough for typical class sizes)
+    if not session_detail:
+        raise HTTPException(
+            status_code=404,
+            detail="Attendance session not found in database."
+        )
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Name", "Roll Number", "Class", "Date", "Status"])
 
-    if roll_list:
-        # Look up each recognized student from the DB
-        matched_students = database.get_students_by_roll_numbers(roll_list)
-
-        for s in matched_students:
-            writer.writerow([s["name"], s["roll_number"], s["class_name"], attendance_date, "Present"])
+    for r in session_detail["records"]:
+        status_str = "Present" if r["status"] == "present" else "Absent"
+        writer.writerow([
+            r["name"] or "Unknown",
+            r["roll_number"] or "",
+            r["class_name"] or session_detail["class_name"],
+            session_detail["attendance_date"],
+            status_str,
+        ])
 
     output.seek(0)
-
-    filename = f"{attendance_date}_{class_name}.csv"
+    filename = f"{session_detail['attendance_date']}_{session_detail['class_name']}.csv"
     return StreamingResponse(
         iter([output.read()]),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+

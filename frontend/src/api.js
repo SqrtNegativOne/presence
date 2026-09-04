@@ -71,11 +71,39 @@ export async function processAttendance(formData) {
 
 /**
  * Build the URL for CSV export and trigger a browser download.
- * We use window.location.href so the browser downloads it as a file,
- * rather than showing the CSV text in the page.
+ * We use window.location.href so the browser downloads it as a file.
  */
-export function downloadCsv({ className, date, rollNumbers }) {
-  const rolls = rollNumbers.join(",");
-  const url = `${BASE}/attendance/export?class_name=${encodeURIComponent(className)}&attendance_date=${encodeURIComponent(date)}&roll_numbers=${encodeURIComponent(rolls)}`;
-  window.location.href = url;
+export function downloadCsv({ sessionId, className, date }) {
+  const params = new URLSearchParams();
+  if (sessionId) params.append("session_id", sessionId);
+  if (className) params.append("class_name", className);
+  if (date) params.append("attendance_date", date);
+  window.location.href = `${BASE}/attendance/export?${params.toString()}`;
 }
+
+/**
+ * Fetch past attendance sessions, optionally filtered by class.
+ * @param {string|null} className
+ */
+export async function getAttendanceHistory(className = null) {
+  const url = className
+    ? `${BASE}/attendance/history?class_name=${encodeURIComponent(className)}`
+    : `${BASE}/attendance/history`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch attendance history");
+  return res.json();
+}
+
+/**
+ * Fetch full details and records for a specific attendance session.
+ * @param {number} sessionId
+ */
+export async function getAttendanceSession(sessionId) {
+  const res = await fetch(`${BASE}/attendance/sessions/${sessionId}`);
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to fetch attendance session");
+  }
+  return res.json();
+}
+
