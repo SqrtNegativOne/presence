@@ -80,15 +80,15 @@ absent_ids = enrolled_ids - recognized_ids
 Let the user snap a photo directly from their laptop webcam/phone camera instead of uploading a file.
 
 **Implementation:**
-- [ ] Add a `<video>` element + "Start Camera" button that calls `navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })`
-- [ ] "Capture" button snapshots the video to a `<canvas>`, converts to `Blob` via `canvas.toBlob()`
-- [ ] Feed the `Blob` into the same upload flow (either enrollment or attendance)
-- [ ] Add a toggle: "Upload File" vs "Use Camera"
-- [ ] Handle permissions gracefully (camera denied, not available, etc.)
+- [x] Add a `<video>` element + "Start Camera" button that calls `navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })`
+- [x] "Capture" button snapshots the video to a `<canvas>`, converts to `Blob` via `canvas.toBlob()`
+- [x] Feed the `Blob` into the same upload flow (either enrollment or attendance)
+- [x] Add a toggle: "Upload File" vs "Use Camera"
+- [x] Handle permissions gracefully (camera denied, not available, etc.)
 
 **Apply to both pages:**
-- [ ] `EnrollPage.jsx` — solo portrait capture for enrollment
-- [ ] `AttendancePage.jsx` — group photo capture for attendance
+- [x] `EnrollPage.jsx` — solo portrait capture for enrollment
+- [x] `AttendancePage.jsx` — group photo capture for attendance
 
 ### 1.2 — Local Model (Browser-Side Face Recognition)
 
@@ -123,7 +123,7 @@ Add [face-api.js](https://github.com/justadudewhohacks/face-api.js) as a client-
 > ℹ️ face-api.js produces **128-d** embeddings while InsightFace produces **512-d** embeddings. These are **not interchangeable** — a student enrolled with one model must be matched with the same model. The DB needs a `model_type` column on the `students` table, and enrollment must record which model generated the embedding.
 
 **Implementation:**
-- [ ] `npm install face-api.js` in frontend
+- [ ] `bun add face-api.js` in frontend
 - [ ] Create `frontend/src/services/localFaceService.js` — load models, detect, compute embeddings
 - [ ] Host the face-api.js model weights as static assets in `frontend/public/models/`
 - [ ] Add `model_type TEXT NOT NULL DEFAULT 'insightface'` column to `students` table
@@ -442,7 +442,7 @@ backend/
 
 ### 4.2 — Frontend Tests (vitest)
 
-- [ ] `npm install -D vitest @testing-library/react @testing-library/jest-dom`
+- [ ] `bun add -d vitest @testing-library/react @testing-library/jest-dom`
 - [ ] `test/api.test.js` — mock `fetch`, verify correct URLs and payloads
 - [ ] `test/EnrollPage.test.jsx` — form validation, submit flow
 - [ ] `test/AttendancePage.test.jsx` — file upload, results rendering
@@ -465,8 +465,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-      - run: cd frontend && npm ci && npm test
+      - uses: oven-sh/setup-bun@v2
+      - run: cd frontend && bun install
+      - run: cd frontend && bun test
 ```
 
 ---
@@ -496,7 +497,7 @@ jobs:
 
 **Tasks:**
 - [ ] Add `render.yaml` (Infrastructure as Code for Render)
-- [ ] Build step: `cd frontend && npm run build` → deploy as static site (or use Vercel for 100 GB free bandwidth)
+- [ ] Build step: `cd frontend && bun run build` → deploy as static site (or use Vercel for 100 GB free bandwidth)
 - [ ] Backend: configure `DATABASE_URL` env var pointing to Supabase/Neon Postgres
 - [ ] Set `PYTHON_VERSION=3.11` in Render env
 - [ ] Strip InsightFace/ONNX from production requirements (optional `[cloud]` dependency group in `pyproject.toml`)

@@ -1,13 +1,17 @@
 import React, { useRef, useState } from "react";
 import { enrollStudent } from "../api";
+import CameraCapture from "../components/CameraCapture";
 
 export default function EnrollPage() {
   // Form field state
   const [name, setName]           = useState("");
   const [roll, setRoll]           = useState("");
   const [className, setClassName] = useState("");
-  const [photo, setPhoto]         = useState(null);    // File object
-  const [preview, setPreview]     = useState(null);    // data URL for preview
+  const [photo, setPhoto]         = useState(null);    // File or Blob object
+  const [preview, setPreview]     = useState(null);    // data URL or object URL for preview
+
+  // Source selection: "upload" | "camera"
+  const [sourceMode, setSourceMode] = useState("upload");
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -15,20 +19,49 @@ export default function EnrollPage() {
 
   const fileInputRef = useRef(null);
 
+  function clearPhoto() {
+    if (preview && preview.startsWith("blob:")) {
+      URL.revokeObjectURL(preview);
+    }
+    setPhoto(null);
+    setPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleSourceModeChange(newMode) {
+    if (newMode === sourceMode) return;
+    clearPhoto();
+    setSourceMode(newMode);
+  }
+
   // When the user picks a file, generate a preview immediately using FileReader.
   // FileReader reads the file in the browser without uploading it.
   function handlePhotoChange(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (preview && preview.startsWith("blob:")) {
+      URL.revokeObjectURL(preview);
+    }
     setPhoto(file);
     const reader = new FileReader();
     reader.onload = (ev) => setPreview(ev.target.result);
     reader.readAsDataURL(file); // converts file → base64 data URL
   }
 
+  function handleCameraCapture({ file, previewUrl }) {
+    if (preview && preview.startsWith("blob:")) {
+      URL.revokeObjectURL(preview);
+    }
+    setPhoto(file);
+    setPreview(previewUrl);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!photo) { showToast("error", "Please select a photo."); return; }
+    if (!photo) {
+      showToast("error", sourceMode === "camera" ? "Please capture a portrait photo." : "Please select a photo.");
+      return;
+    }
 
     setLoading(true);
     setToast(null);
@@ -36,17 +69,17 @@ export default function EnrollPage() {
     // FormData is the browser's way of sending a mix of text + file data
     // in one HTTP request (multipart/form-data format).
     const fd = new FormData();
-    fd.append("name",       name);
+    fd.append("name",        name);
     fd.append("roll_number", roll);
-    fd.append("class_name", className);
-    fd.append("photo",      photo);
+    fd.append("class_name",  className);
+    fd.append("photo",       photo, photo.name || "solo_portrait.jpg");
 
     try {
       const result = await enrollStudent(fd);
       showToast("success", `${result.name} enrolled successfully.`);
       // Reset form after success
-      setName(""); setRoll(""); setClassName(""); setPhoto(null); setPreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setName(""); setRoll(""); setClassName("");
+      clearPhoto();
     } catch (err) {
       showToast("error", err.message);
     } finally {
@@ -134,44 +167,87 @@ export default function EnrollPage() {
             </div>
 
             <Field label="Solo Portrait Photo">
-              {/* The native file input is hard to fully style.
-                  We wrap it in a div that has the same left-border treatment
-                  as our other inputs. */}
-              <div
-                style={{
-                  borderLeft: "2px solid var(--col-border2)",
-                  background: "var(--col-surface2)",
-                }}
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  onChange={handlePhotoChange}
-                  required
-                  className="block w-full text-sm cursor-pointer py-2.5 px-3"
-                  style={{ color: "var(--col-muted)" }}
-                />
+              {/* Mode toggle: Upload File vs Use Camera */}
+              <div className="flex border border-[var(--col-border)] bg-[var(--col-surface2)] p-1 gap-1 mb-3">
+                <button
+                  type="button"
+                  onClick={() => handleSourceModeChange("upload")}
+                  className={`flex-1 py-1.5 px-3 text-xs uppercase tracking-wider font-semibold transition-colors duration-150 ${
+                    sourceMode === "upload"
+                      ? "bg-[var(--col-accent)] text-[#06060f]"
+                      : "text-[var(--col-muted)] hover:text-[var(--col-text)]"
+                  }`}
+                >
+                  📁 Upload File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSourceModeChange("camera")}
+                  className={`flex-1 py-1.5 px-3 text-xs uppercase tracking-wider font-semibold transition-colors duration-150 ${
+                    sourceMode === "camera"
+                      ? "bg-[var(--col-accent)] text-[#06060f]"
+                      : "text-[var(--col-muted)] hover:text-[var(--col-text)]"
+                  }`}
+                >
+                  📷 Use Camera
+                </button>
               </div>
-              <p className="text-xs mt-1.5" style={{ color: "var(--col-muted)" }}>
-                Must contain exactly one face. Clear, well-lit, frontal.
-              </p>
-            </Field>
 
-            {/* Photo preview — shown once a file is chosen */}
-            {preview && (
-              <div
-                className="flex justify-center p-4"
-                style={{ background: "var(--col-surface2)", border: "1px solid var(--col-border)" }}
-              >
-                <img
-                  src={preview}
-                  alt="Photo preview"
-                  className="max-h-48 object-contain"
-                  style={{ border: "2px solid var(--col-accent)", opacity: 0.9 }}
+              {sourceMode === "upload" ? (
+                <div>
+                  <div
+                    style={{
+                      borderLeft: "2px solid var(--col-border2)",
+                      background: "var(--col-surface2)",
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={fileInputRef}
+                      onChange={handlePhotoChange}
+                      required={!photo}
+                      className="block w-full text-sm cursor-pointer py-2.5 px-3"
+                      style={{ color: "var(--col-muted)" }}
+                    />
+                  </div>
+                  <p className="text-xs mt-1.5" style={{ color: "var(--col-muted)" }}>
+                    Must contain exactly one face. Clear, well-lit, frontal.
+                  </p>
+
+                  {/* Photo preview — shown once a file is chosen */}
+                  {preview && (
+                    <div
+                      className="mt-3 flex justify-center p-4 relative"
+                      style={{ background: "var(--col-surface2)", border: "1px solid var(--col-border)" }}
+                    >
+                      <img
+                        src={preview}
+                        alt="Photo preview"
+                        className="max-h-48 object-contain"
+                        style={{ border: "2px solid var(--col-accent)", opacity: 0.9 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={clearPhoto}
+                        className="absolute top-2 right-2 text-xs font-mono px-2 py-1 bg-[var(--col-surface)] text-[var(--col-muted)] hover:text-[var(--col-red)] border border-[var(--col-border)]"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <CameraCapture
+                  onCapture={handleCameraCapture}
+                  onClear={clearPhoto}
+                  previewUrl={preview}
+                  filename="solo_portrait.jpg"
+                  promptText="Snap student solo portrait photo"
+                  defaultFacingMode="environment"
                 />
-              </div>
-            )}
+              )}
+            </Field>
 
           </div>
 

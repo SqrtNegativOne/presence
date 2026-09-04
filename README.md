@@ -23,9 +23,9 @@ Handles 70+ students. Recognition takes ~1–2 seconds on CPU.
 |------|---------|---------|
 | Python | 3.11+ | [python.org](https://www.python.org/downloads/) |
 | uv | latest | `pip install uv` or [docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/) |
-| Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
+| Bun | 1.0+ | [bun.sh](https://bun.sh/) |
 
-> **Docker alternative**: If you have Docker Desktop installed you can skip Python/Node entirely — see [Running with Docker](#running-with-docker).
+> **Docker alternative**: If you have Docker Desktop installed you can skip Python/Bun entirely — see [Running with Docker](#running-with-docker).
 
 ---
 
@@ -36,7 +36,7 @@ Handles 70+ students. Recognition takes ~1–2 seconds on CPU.
 ```
 
 That's it. The script:
-1. Installs all Python and Node dependencies (first run only — takes a few minutes)
+1. Installs all Python and Bun dependencies (first run only — takes a few minutes)
 2. Opens the **backend** in one terminal window on port 8000
 3. Opens the **frontend** in another terminal window on port 5173
 
@@ -60,8 +60,8 @@ uv run uvicorn main:app --reload --port 8000
 **Terminal 2 — Frontend**
 ```bash
 cd frontend
-npm install      # install Node packages (first time only)
-npm run dev
+bun install      # install frontend packages (first time only)
+bun run dev
 ```
 
 - API docs (Swagger UI): http://localhost:8000/docs

@@ -1,11 +1,16 @@
 import React, { useRef, useState } from "react";
 import { downloadCsv, processAttendance } from "../api";
+import CameraCapture from "../components/CameraCapture";
 
 export default function AttendancePage() {
   // Form state
   const [className, setClassName] = useState("");
   const [date, setDate]           = useState(todayStr());
   const [photo, setPhoto]         = useState(null);
+  const [preview, setPreview]     = useState(null);
+
+  // Source selection: "upload" | "camera"
+  const [sourceMode, setSourceMode] = useState("upload");
 
   // Result state
   const [result, setResult]   = useState(null);   // full API response object
@@ -14,16 +19,57 @@ export default function AttendancePage() {
 
   const fileInputRef = useRef(null);
 
+  function clearPhoto() {
+    if (preview && preview.startsWith("blob:")) {
+      URL.revokeObjectURL(preview);
+    }
+    setPhoto(null);
+    setPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleSourceModeChange(newMode) {
+    if (newMode === sourceMode) return;
+    clearPhoto();
+    setResult(null);
+    setError(null);
+    setSourceMode(newMode);
+  }
+
   function handlePhotoChange(e) {
-    setPhoto(e.target.files[0] || null);
+    const file = e.target.files[0] || null;
+    if (preview && preview.startsWith("blob:")) {
+      URL.revokeObjectURL(preview);
+    }
+    setPhoto(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setPreview(ev.target.result);
+      reader.readAsDataURL(file);
+    } else {
+      setPreview(null);
+    }
     // Clear previous results whenever a new photo is selected
+    setResult(null);
+    setError(null);
+  }
+
+  function handleCameraCapture({ file, previewUrl }) {
+    if (preview && preview.startsWith("blob:")) {
+      URL.revokeObjectURL(preview);
+    }
+    setPhoto(file);
+    setPreview(previewUrl);
     setResult(null);
     setError(null);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!photo) { setError("Please select a group photo."); return; }
+    if (!photo) {
+      setError(sourceMode === "camera" ? "Please capture a group photo first." : "Please select a group photo.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -32,7 +78,7 @@ export default function AttendancePage() {
     const fd = new FormData();
     fd.append("class_name",      className);
     fd.append("attendance_date", date);
-    fd.append("photo",           photo);
+    fd.append("photo",           photo, photo.name || "attendance_group_photo.jpg");
 
     try {
       const data = await processAttendance(fd);
@@ -107,22 +153,87 @@ export default function AttendancePage() {
 
             <div>
               <label className="field-label">Group Photo</label>
-              <div
-                style={{
-                  borderLeft: "2px solid var(--col-border2)",
-                  background: "var(--col-surface2)",
-                }}
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  onChange={handlePhotoChange}
-                  required
-                  className="block w-full text-sm cursor-pointer py-2.5 px-3"
-                  style={{ color: "var(--col-muted)" }}
-                />
+
+              {/* Mode toggle: Upload File vs Use Camera */}
+              <div className="flex border border-[var(--col-border)] bg-[var(--col-surface2)] p-1 gap-1 mb-3">
+                <button
+                  type="button"
+                  onClick={() => handleSourceModeChange("upload")}
+                  className={`flex-1 py-1.5 px-3 text-xs uppercase tracking-wider font-semibold transition-colors duration-150 ${
+                    sourceMode === "upload"
+                      ? "bg-[var(--col-accent)] text-[#06060f]"
+                      : "text-[var(--col-muted)] hover:text-[var(--col-text)]"
+                  }`}
+                >
+                  📁 Upload File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSourceModeChange("camera")}
+                  className={`flex-1 py-1.5 px-3 text-xs uppercase tracking-wider font-semibold transition-colors duration-150 ${
+                    sourceMode === "camera"
+                      ? "bg-[var(--col-accent)] text-[#06060f]"
+                      : "text-[var(--col-muted)] hover:text-[var(--col-text)]"
+                  }`}
+                >
+                  📷 Use Camera
+                </button>
               </div>
+
+              {sourceMode === "upload" ? (
+                <div>
+                  <div
+                    style={{
+                      borderLeft: "2px solid var(--col-border2)",
+                      background: "var(--col-surface2)",
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={fileInputRef}
+                      onChange={handlePhotoChange}
+                      required={!photo}
+                      className="block w-full text-sm cursor-pointer py-2.5 px-3"
+                      style={{ color: "var(--col-muted)" }}
+                    />
+                  </div>
+                  <p className="text-xs mt-1.5" style={{ color: "var(--col-muted)" }}>
+                    Capture the whole classroom clearly with all faces visible.
+                  </p>
+
+                  {/* Preview for uploaded file */}
+                  {preview && (
+                    <div
+                      className="mt-3 flex justify-center p-3 relative"
+                      style={{ background: "var(--col-surface2)", border: "1px solid var(--col-border)" }}
+                    >
+                      <img
+                        src={preview}
+                        alt="Selected group photo"
+                        className="max-h-56 w-auto object-contain"
+                        style={{ border: "2px solid var(--col-accent)", opacity: 0.9 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={clearPhoto}
+                        className="absolute top-2 right-2 text-xs font-mono px-2 py-1 bg-[var(--col-surface)] text-[var(--col-muted)] hover:text-[var(--col-red)] border border-[var(--col-border)]"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <CameraCapture
+                  onCapture={handleCameraCapture}
+                  onClear={clearPhoto}
+                  previewUrl={preview}
+                  filename="attendance_group_photo.jpg"
+                  promptText="Snap classroom group photo for attendance"
+                  defaultFacingMode="environment"
+                />
+              )}
             </div>
 
             {error && (

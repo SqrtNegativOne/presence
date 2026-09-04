@@ -44,7 +44,7 @@ presence/
 
 # Manual:
 cd backend && uv run uvicorn main:app --reload --port 8000
-cd frontend && npm run dev
+cd frontend && bun run dev
 ```
 - Backend API explorer: http://localhost:8000/docs
 - Frontend: http://localhost:5173
