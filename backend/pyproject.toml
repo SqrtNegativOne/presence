@@ -20,10 +20,39 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "httpx>=0.27.0",
+    "ruff>=0.16.6",
+    "ty>=0.0.78",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line length handled by formatter
+    "B008",   # function call in argument defaults (FastAPI Depends/File/Form)
+    "B904",   # raise HTTPException from None/err
+    "SIM117", # nested with statements (db conn + cursor)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["database", "routers", "services"]
+
+[tool.ty]
+
 
 

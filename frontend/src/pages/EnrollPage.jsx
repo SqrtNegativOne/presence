@@ -5,7 +5,7 @@ import { useModel } from "../context/ModelContext";
 import localFaceService from "../services/localFaceService";
 
 export default function EnrollPage() {
-  const { engine, isLocal } = useModel();
+  const { isLocal } = useModel();
 
   // Form field state
   const [name, setName]           = useState("");

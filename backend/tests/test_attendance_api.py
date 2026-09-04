@@ -1,8 +1,8 @@
 import csv
 import io
 from unittest.mock import patch
+
 import numpy as np
-import pytest
 
 import database
 
@@ -17,7 +17,9 @@ def test_process_attendance_no_students(client, dummy_image_bytes):
     assert "No students enrolled yet" in response.json()["detail"]
 
 
-def test_process_attendance_persistence_and_absences(client, dummy_embedding, dummy_image_bytes):
+def test_process_attendance_persistence_and_absences(
+    client, dummy_embedding, dummy_image_bytes
+):
     # Enroll Alice and Bob
     sid_alice = database.insert_student("Alice", "CS101", "10-A", dummy_embedding)
     sid_bob = database.insert_student("Bob", "CS102", "10-A", dummy_embedding)
@@ -35,8 +37,10 @@ def test_process_attendance_persistence_and_absences(client, dummy_embedding, du
         }
     ]
 
-    with patch("routers.attendance.match_group_photo", return_value=mock_face_results), \
-         patch("routers.attendance.annotate_image", return_value="dummy_base64"):
+    with (
+        patch("routers.attendance.match_group_photo", return_value=mock_face_results),
+        patch("routers.attendance.annotate_image", return_value="dummy_base64"),
+    ):
         response = client.post(
             "/api/attendance/process",
             data={"class_name": "10-A", "attendance_date": "2026-03-05"},
@@ -109,7 +113,9 @@ def test_export_by_class_and_date(client, dummy_embedding, dummy_image_bytes):
         [{"student_id": sid, "status": "present", "similarity": 0.9, "face_index": 1}],
     )
 
-    export_res = client.get("/api/attendance/export?class_name=10-B&attendance_date=2026-03-05")
+    export_res = client.get(
+        "/api/attendance/export?class_name=10-B&attendance_date=2026-03-05"
+    )
     assert export_res.status_code == 200
     assert "Charlie" in export_res.text
 
@@ -121,8 +127,12 @@ def test_export_not_found(client):
 
 def test_match_embeddings_attendance(client, dummy_embedding_128):
     # Enroll Alice (present) and Bob (absent) with faceapi
-    sid_alice = database.insert_student("Alice", "CS101", "10-A", dummy_embedding_128, model_type="faceapi")
-    sid_bob = database.insert_student("Bob", "CS102", "10-A", -dummy_embedding_128, model_type="faceapi")
+    database.insert_student(
+        "Alice", "CS101", "10-A", dummy_embedding_128, model_type="faceapi"
+    )
+    database.insert_student(
+        "Bob", "CS102", "10-A", -dummy_embedding_128, model_type="faceapi"
+    )
 
     # Send Alice's embedding + an unknown random embedding
     unknown_emb = np.random.randn(128).astype(np.float32)
@@ -166,4 +176,3 @@ def test_match_embeddings_no_students(client, dummy_embedding_128):
     )
     assert response.status_code == 400
     assert "No students enrolled yet" in response.json()["detail"]
-

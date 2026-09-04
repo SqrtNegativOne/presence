@@ -1,9 +1,7 @@
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach } from "bun:test";
 import {
   enrollStudent,
   enrollStudentEmbedding,
-  listStudents,
-  deleteStudent,
   processAttendance,
   matchEmbeddings,
 } from "../src/api.js";

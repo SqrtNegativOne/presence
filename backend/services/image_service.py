@@ -14,7 +14,6 @@ import base64
 import io
 from pathlib import Path
 
-import numpy as np
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
@@ -60,7 +59,9 @@ def annotate_image(image_bytes: bytes, face_results: list[dict]) -> str:
     for face in face_results:
         x1, y1, x2, y2 = face["bbox"]
         label = f"{face['face_index']} {face['name']}"
-        color = "#22c55e" if face["status"] == "recognized" else "#ef4444"  # green / red
+        color = (
+            "#22c55e" if face["status"] == "recognized" else "#ef4444"
+        )  # green / red
 
         # Draw rectangle
         for t in range(box_thickness):
@@ -80,7 +81,9 @@ def annotate_image(image_bytes: bytes, face_results: list[dict]) -> str:
         )
         draw.text((x1 + 3, label_y + 2), label, fill="white", font=font)
 
-    logger.debug(f"Annotated {len(face_results)} faces on {img.width}×{img.height} image")
+    logger.debug(
+        f"Annotated {len(face_results)} faces on {img.width}×{img.height} image"
+    )
 
     # Encode to PNG → base64
     buf = io.BytesIO()

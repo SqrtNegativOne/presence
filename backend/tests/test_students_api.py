@@ -1,5 +1,4 @@
 from unittest.mock import patch
-import pytest
 
 
 def test_enroll_student(client, dummy_embedding, dummy_image_bytes):
@@ -52,7 +51,9 @@ def test_enroll_no_face(client, dummy_image_bytes):
 def test_enroll_multiple_faces(client, dummy_image_bytes):
     with patch(
         "routers.students.encode_single_face",
-        side_effect=ValueError("2 faces detected. Enrollment photos must contain exactly one person."),
+        side_effect=ValueError(
+            "2 faces detected. Enrollment photos must contain exactly one person."
+        ),
     ):
         response = client.post(
             "/api/students/enroll",
@@ -60,7 +61,9 @@ def test_enroll_multiple_faces(client, dummy_image_bytes):
             files={"photo": ("bob.jpg", dummy_image_bytes, "image/jpeg")},
         )
     assert response.status_code == 400
-    assert "Enrollment photos must contain exactly one person" in response.json()["detail"]
+    assert (
+        "Enrollment photos must contain exactly one person" in response.json()["detail"]
+    )
 
 
 def test_list_students_by_class(client, dummy_embedding, dummy_image_bytes):
@@ -145,4 +148,3 @@ def test_enroll_student_embedding_duplicate(client, dummy_embedding_128):
         },
     )
     assert res.status_code == 409
-

@@ -5,7 +5,7 @@ import { useModel } from "../context/ModelContext";
 import localFaceService from "../services/localFaceService";
 
 export default function AttendancePage() {
-  const { engine, isLocal } = useModel();
+  const { isLocal } = useModel();
 
   // Form state
   const [className, setClassName] = useState("");
@@ -98,7 +98,7 @@ export default function AttendancePage() {
           photoHash = Array.from(new Uint8Array(hashBuffer))
             .map((b) => b.toString(16).padStart(2, "0"))
             .join("");
-        } catch (hErr) {
+        } catch {
           // Non-critical
         }
 

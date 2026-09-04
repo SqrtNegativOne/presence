@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock, patch
-import numpy as np
-import pytest
 
-from services.face_service import match_group_photo, THRESHOLD
+import numpy as np
+
+from services.face_service import THRESHOLD, match_group_photo
 
 
 class MockFace:
@@ -35,8 +35,13 @@ def test_matching_above_threshold():
     mock_app = MagicMock()
     mock_app.get.return_value = [MockFace(target_vec)]
 
-    with patch("services.face_service.get_face_app", return_value=mock_app), \
-         patch("services.face_service._bytes_to_bgr", return_value=np.zeros((100, 100, 3), dtype=np.uint8)):
+    with (
+        patch("services.face_service.get_face_app", return_value=mock_app),
+        patch(
+            "services.face_service._bytes_to_bgr",
+            return_value=np.zeros((100, 100, 3), dtype=np.uint8),
+        ),
+    ):
         results = match_group_photo(b"dummy_bytes", known_students)
 
     assert len(results) == 1
@@ -69,8 +74,13 @@ def test_matching_below_threshold():
     mock_app = MagicMock()
     mock_app.get.return_value = [MockFace(target_vec)]
 
-    with patch("services.face_service.get_face_app", return_value=mock_app), \
-         patch("services.face_service._bytes_to_bgr", return_value=np.zeros((100, 100, 3), dtype=np.uint8)):
+    with (
+        patch("services.face_service.get_face_app", return_value=mock_app),
+        patch(
+            "services.face_service._bytes_to_bgr",
+            return_value=np.zeros((100, 100, 3), dtype=np.uint8),
+        ),
+    ):
         results = match_group_photo(b"dummy_bytes", known_students)
 
     assert len(results) == 1
@@ -106,8 +116,13 @@ def test_matching_no_duplicate_assignments():
     mock_app = MagicMock()
     mock_app.get.return_value = [MockFace(face1_vec), MockFace(face2_vec)]
 
-    with patch("services.face_service.get_face_app", return_value=mock_app), \
-         patch("services.face_service._bytes_to_bgr", return_value=np.zeros((100, 100, 3), dtype=np.uint8)):
+    with (
+        patch("services.face_service.get_face_app", return_value=mock_app),
+        patch(
+            "services.face_service._bytes_to_bgr",
+            return_value=np.zeros((100, 100, 3), dtype=np.uint8),
+        ),
+    ):
         results = match_group_photo(b"dummy_bytes", known_students)
 
     assert len(results) == 2

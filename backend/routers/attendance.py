@@ -6,14 +6,12 @@ import csv
 import hashlib
 import io
 from datetime import date
-from typing import Optional
 
+import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from loguru import logger
-
 from pydantic import BaseModel, Field
-import numpy as np
 
 import database
 from services.face_service import match_embeddings, match_group_photo
@@ -27,9 +25,8 @@ class MatchEmbeddingsRequest(BaseModel):
     attendance_date: str = Field(default="")
     embeddings: list[list[float]] = Field(default_factory=list)
     model_type: str = Field(default="faceapi")
-    photo_hash: Optional[str] = None
-    bboxes: Optional[list[Optional[list[int]]]] = None
-
+    photo_hash: str | None = None
+    bboxes: list[list[int] | None] | None = None
 
 
 @router.post("/process")
@@ -52,10 +49,12 @@ async def process_attendance(
     if not all_students:
         raise HTTPException(
             status_code=400,
-            detail="No students enrolled yet. Please enroll students before taking attendance."
+            detail="No students enrolled yet. Please enroll students before taking attendance.",
         )
 
-    logger.info(f"Processing attendance for class={class_name}, date={attendance_date}, students_in_db={len(all_students)}")
+    logger.info(
+        f"Processing attendance for class={class_name}, date={attendance_date}, students_in_db={len(all_students)}"
+    )
 
     # Run face detection + matching
     try:
@@ -64,7 +63,9 @@ async def process_attendance(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Face matching failed: {e}")
-        raise HTTPException(status_code=500, detail="Face recognition failed. Check server logs.")
+        raise HTTPException(
+            status_code=500, detail="Face recognition failed. Check server logs."
+        )
 
     # Annotate the original image with colored boxes
     try:
@@ -112,19 +113,23 @@ async def process_attendance(
     # Persist attendance records for all enrolled students
     records_to_insert = []
     for r in recognized:
-        records_to_insert.append({
-            "student_id": r["student_id"],
-            "status": "present",
-            "similarity": r.get("similarity"),
-            "face_index": r.get("face_index"),
-        })
+        records_to_insert.append(
+            {
+                "student_id": r["student_id"],
+                "status": "present",
+                "similarity": r.get("similarity"),
+                "face_index": r.get("face_index"),
+            }
+        )
     for a in absent_students:
-        records_to_insert.append({
-            "student_id": a["student_id"],
-            "status": "absent",
-            "similarity": None,
-            "face_index": None,
-        })
+        records_to_insert.append(
+            {
+                "student_id": a["student_id"],
+                "status": "absent",
+                "similarity": None,
+                "face_index": None,
+            }
+        )
     database.insert_attendance_records(session_id, records_to_insert)
 
     return {
@@ -154,11 +159,13 @@ async def match_embeddings_attendance(payload: MatchEmbeddingsRequest):
         raise HTTPException(status_code=400, detail="class_name is required.")
 
     # Load enrolled students for this class with matching model_type
-    all_students = database.get_all_students_with_embeddings(class_name, model_type=model_type)
+    all_students = database.get_all_students_with_embeddings(
+        class_name, model_type=model_type
+    )
     if not all_students:
         raise HTTPException(
             status_code=400,
-            detail=f"No students enrolled yet for class '{class_name}' with model '{model_type}'. Please enroll students before taking attendance."
+            detail=f"No students enrolled yet for class '{class_name}' with model '{model_type}'. Please enroll students before taking attendance.",
         )
 
     query_embeddings = [np.array(emb, dtype=np.float32) for emb in payload.embeddings]
@@ -207,19 +214,23 @@ async def match_embeddings_attendance(payload: MatchEmbeddingsRequest):
     # Persist attendance records for all enrolled students
     records_to_insert = []
     for r in recognized:
-        records_to_insert.append({
-            "student_id": r["student_id"],
-            "status": "present",
-            "similarity": r.get("similarity"),
-            "face_index": r.get("face_index"),
-        })
+        records_to_insert.append(
+            {
+                "student_id": r["student_id"],
+                "status": "present",
+                "similarity": r.get("similarity"),
+                "face_index": r.get("face_index"),
+            }
+        )
     for a in absent_students:
-        records_to_insert.append({
-            "student_id": a["student_id"],
-            "status": "absent",
-            "similarity": None,
-            "face_index": None,
-        })
+        records_to_insert.append(
+            {
+                "student_id": a["student_id"],
+                "status": "absent",
+                "similarity": None,
+                "face_index": None,
+            }
+        )
     database.insert_attendance_records(session_id, records_to_insert)
 
     return {
@@ -235,7 +246,7 @@ async def match_embeddings_attendance(payload: MatchEmbeddingsRequest):
 
 
 @router.get("/history")
-async def get_attendance_history(class_name: Optional[str] = Query(default=None)):
+async def get_attendance_history(class_name: str | None = Query(default=None)):
     """
     Return past attendance sessions, optionally filtered by class_name.
     """
@@ -249,15 +260,17 @@ async def get_session_detail(session_id: int):
     """
     detail = database.get_session_detail(session_id)
     if not detail:
-        raise HTTPException(status_code=404, detail=f"Attendance session {session_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Attendance session {session_id} not found"
+        )
     return detail
 
 
 @router.get("/export")
 async def export_csv(
-    session_id: Optional[int] = Query(default=None),
-    class_name: Optional[str] = Query(default=None),
-    attendance_date: Optional[str] = Query(default=None),
+    session_id: int | None = Query(default=None),
+    class_name: str | None = Query(default=None),
+    attendance_date: str | None = Query(default=None),
 ):
     """
     Stream a CSV file from the database for an attendance session.
@@ -268,12 +281,13 @@ async def export_csv(
     if session_id is not None:
         session_detail = database.get_session_detail(session_id)
     elif class_name and attendance_date:
-        session_detail = database.get_session_by_class_and_date(class_name, attendance_date)
+        session_detail = database.get_session_by_class_and_date(
+            class_name, attendance_date
+        )
 
     if not session_detail:
         raise HTTPException(
-            status_code=404,
-            detail="Attendance session not found in database."
+            status_code=404, detail="Attendance session not found in database."
         )
 
     output = io.StringIO()
@@ -282,13 +296,15 @@ async def export_csv(
 
     for r in session_detail["records"]:
         status_str = "Present" if r["status"] == "present" else "Absent"
-        writer.writerow([
-            r["name"] or "Unknown",
-            r["roll_number"] or "",
-            r["class_name"] or session_detail["class_name"],
-            session_detail["attendance_date"],
-            status_str,
-        ])
+        writer.writerow(
+            [
+                r["name"] or "Unknown",
+                r["roll_number"] or "",
+                r["class_name"] or session_detail["class_name"],
+                session_detail["attendance_date"],
+                status_str,
+            ]
+        )
 
     output.seek(0)
     filename = f"{session_detail['attendance_date']}_{session_detail['class_name']}.csv"
@@ -297,4 +313,3 @@ async def export_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-

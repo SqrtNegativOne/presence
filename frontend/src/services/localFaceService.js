@@ -21,7 +21,7 @@ export async function toImageElement(input) {
     if (!input.complete || input.naturalWidth === 0) {
       await new Promise((resolve, reject) => {
         input.onload = () => resolve();
-        input.onerror = (err) => reject(new Error("Image element failed to load"));
+        input.onerror = () => reject(new Error("Image element failed to load"));
       });
     }
     return input;
@@ -39,7 +39,7 @@ export async function toImageElement(input) {
         URL.revokeObjectURL(objectUrl);
         resolve(img);
       };
-      img.onerror = (err) => {
+      img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
         reject(new Error("Failed to load image from file/blob"));
       };
@@ -52,7 +52,7 @@ export async function toImageElement(input) {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => resolve(img);
-      img.onerror = (err) => reject(new Error("Failed to load image from URL"));
+      img.onerror = () => reject(new Error("Failed to load image from URL"));
       img.src = input;
     });
   }

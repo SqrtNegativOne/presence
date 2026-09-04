@@ -1,5 +1,4 @@
 import os
-from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -29,12 +28,16 @@ def tmp_db():
     database.set_database_url(TEST_DB_URL)
     with database.get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("TRUNCATE TABLE attendance_records, attendance_sessions, students RESTART IDENTITY CASCADE;")
+            cur.execute(
+                "TRUNCATE TABLE attendance_records, attendance_sessions, students RESTART IDENTITY CASCADE;"
+            )
         conn.commit()
     yield
     with database.get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("TRUNCATE TABLE attendance_records, attendance_sessions, students RESTART IDENTITY CASCADE;")
+            cur.execute(
+                "TRUNCATE TABLE attendance_records, attendance_sessions, students RESTART IDENTITY CASCADE;"
+            )
         conn.commit()
 
 
@@ -65,6 +68,7 @@ def dummy_embedding_128():
 def dummy_image_bytes():
     """Generate a minimal valid 1x1 PNG image in bytes."""
     import io
+
     from PIL import Image
 
     buf = io.BytesIO()

@@ -6,13 +6,11 @@ Embeddings (float32 numpy arrays) are stored as BYTEA using raw bytes.
 """
 
 import atexit
-from contextlib import contextmanager
 import os
-from typing import Optional
+from contextlib import contextmanager
 
-from loguru import logger
 import numpy as np
-import psycopg
+from loguru import logger
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -21,7 +19,7 @@ DATABASE_URL = os.getenv(
     "postgresql://presence:presence@localhost:5432/presence",
 )
 
-_pool: Optional[ConnectionPool] = None
+_pool: ConnectionPool | None = None
 
 
 def get_pool() -> ConnectionPool:
@@ -114,6 +112,7 @@ def init_db() -> None:
 # Student CRUD
 # ---------------------------------------------------------------------------
 
+
 def insert_student(
     name: str,
     roll_number: str,
@@ -139,36 +138,37 @@ def insert_student(
             row = cur.fetchone()
         conn.commit()
         student_id = row["id"]
-        logger.info(f"Enrolled student: {name} ({roll_number}), class={class_name}, model={model_type}")
+        logger.info(
+            f"Enrolled student: {name} ({roll_number}), class={class_name}, model={model_type}"
+        )
         return student_id
 
 
-def get_all_students(class_name: Optional[str] = None) -> list[dict]:
+def get_all_students(class_name: str | None = None) -> list[dict]:
     """
     Return all students, optionally filtered by class_name.
     The face_embedding BYTEA is NOT returned here (it's large and not needed for listing).
     """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            if class_name:
-                cur.execute(
-                    """
+    with get_connection() as conn, conn.cursor() as cur:
+        if class_name:
+            cur.execute(
+                """
                     SELECT id, name, roll_number, class_name, model_type, enrolled_at
                     FROM students
                     WHERE class_name = %s
                     ORDER BY name
                     """,
-                    (class_name,),
-                )
-            else:
-                cur.execute(
-                    """
+                (class_name,),
+            )
+        else:
+            cur.execute(
+                """
                     SELECT id, name, roll_number, class_name, model_type, enrolled_at
                     FROM students
                     ORDER BY name
                     """
-                )
-            rows = cur.fetchall()
+            )
+        rows = cur.fetchall()
 
     result = []
     for r in rows:
@@ -179,33 +179,34 @@ def get_all_students(class_name: Optional[str] = None) -> list[dict]:
     return result
 
 
-def get_all_students_with_embeddings(class_name: str, model_type: Optional[str] = None) -> list[dict]:
+def get_all_students_with_embeddings(
+    class_name: str, model_type: str | None = None
+) -> list[dict]:
     """
     Return all students in a specific class including their embeddings (for attendance matching).
     Optionally filters by model_type ('insightface' | 'faceapi').
     Embeddings are decoded back to numpy arrays.
     """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            if model_type:
-                cur.execute(
-                    """
+    with get_connection() as conn, conn.cursor() as cur:
+        if model_type:
+            cur.execute(
+                """
                     SELECT id, name, roll_number, class_name, model_type, face_embedding
                     FROM students
                     WHERE class_name = %s AND model_type = %s
                     """,
-                    (class_name, model_type),
-                )
-            else:
-                cur.execute(
-                    """
+                (class_name, model_type),
+            )
+        else:
+            cur.execute(
+                """
                     SELECT id, name, roll_number, class_name, model_type, face_embedding
                     FROM students
                     WHERE class_name = %s
                     """,
-                    (class_name,),
-                )
-            rows = cur.fetchall()
+                (class_name,),
+            )
+        rows = cur.fetchall()
 
     result = []
     for row in rows:
@@ -220,17 +221,16 @@ def get_students_by_roll_numbers(roll_numbers: list[str]) -> list[dict]:
     if not roll_numbers:
         return []
 
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
                 SELECT name, roll_number, class_name, model_type
                 FROM students
                 WHERE roll_number = ANY(%s)
                 """,
-                (roll_numbers,),
-            )
-            rows = cur.fetchall()
+            (roll_numbers,),
+        )
+        rows = cur.fetchall()
     return [dict(row) for row in rows]
 
 
@@ -253,13 +253,14 @@ def delete_student(student_id: int) -> bool:
 # Attendance Sessions & Records
 # ---------------------------------------------------------------------------
 
+
 def create_attendance_session(
     class_name: str,
     attendance_date: str,
     total_faces: int,
     recognized_count: int,
     unknown_count: int,
-    photo_hash: Optional[str] = None,
+    photo_hash: str | None = None,
 ) -> int:
     """Create an attendance session record and return its ID."""
     with get_connection() as conn:
@@ -270,12 +271,21 @@ def create_attendance_session(
                 VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (class_name, attendance_date, photo_hash, total_faces, recognized_count, unknown_count),
+                (
+                    class_name,
+                    attendance_date,
+                    photo_hash,
+                    total_faces,
+                    recognized_count,
+                    unknown_count,
+                ),
             )
             row = cur.fetchone()
         conn.commit()
         session_id = row["id"]
-        logger.info(f"Created attendance session id={session_id} for class={class_name}, date={attendance_date}")
+        logger.info(
+            f"Created attendance session id={session_id} for class={class_name}, date={attendance_date}"
+        )
         return session_id
 
 
@@ -310,10 +320,12 @@ def insert_attendance_records(session_id: int, records: list[dict]) -> None:
                 rows,
             )
         conn.commit()
-    logger.info(f"Inserted {len(records)} attendance records for session id={session_id}")
+    logger.info(
+        f"Inserted {len(records)} attendance records for session id={session_id}"
+    )
 
 
-def get_attendance_history(class_name: Optional[str] = None) -> list[dict]:
+def get_attendance_history(class_name: str | None = None) -> list[dict]:
     """
     Return past attendance sessions, optionally filtered by class_name.
     Ordered by attendance_date DESC, id DESC.
@@ -351,7 +363,7 @@ def get_attendance_history(class_name: Optional[str] = None) -> list[dict]:
     return result
 
 
-def get_session_detail(session_id: int) -> Optional[dict]:
+def get_session_detail(session_id: int) -> dict | None:
     """
     Return full details of an attendance session, including all student records
     joined with student details (name, roll_number).
@@ -372,13 +384,15 @@ def get_session_detail(session_id: int) -> Optional[dict]:
 
             session_dict = dict(session_row)
             if hasattr(session_dict.get("attendance_date"), "isoformat"):
-                session_dict["attendance_date"] = session_dict["attendance_date"].isoformat()
+                session_dict["attendance_date"] = session_dict[
+                    "attendance_date"
+                ].isoformat()
             if hasattr(session_dict.get("created_at"), "isoformat"):
                 session_dict["created_at"] = session_dict["created_at"].isoformat()
 
             cur.execute(
                 """
-                SELECT 
+                SELECT
                     r.id,
                     r.session_id,
                     r.student_id,
@@ -391,7 +405,7 @@ def get_session_detail(session_id: int) -> Optional[dict]:
                 FROM attendance_records r
                 LEFT JOIN students s ON r.student_id = s.id
                 WHERE r.session_id = %s
-                ORDER BY 
+                ORDER BY
                     CASE r.status WHEN 'present' THEN 1 ELSE 2 END,
                     s.roll_number ASC,
                     s.name ASC
@@ -403,19 +417,18 @@ def get_session_detail(session_id: int) -> Optional[dict]:
             return session_dict
 
 
-def get_session_by_class_and_date(class_name: str, attendance_date: str) -> Optional[dict]:
+def get_session_by_class_and_date(class_name: str, attendance_date: str) -> dict | None:
     """Return the latest session detail for a given class and date."""
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
                 SELECT id FROM attendance_sessions
                 WHERE class_name = %s AND attendance_date = %s
                 ORDER BY id DESC LIMIT 1
                 """,
-                (class_name, attendance_date),
-            )
-            row = cur.fetchone()
-            if not row:
-                return None
-            return get_session_detail(row["id"])
+            (class_name, attendance_date),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return get_session_detail(row["id"])

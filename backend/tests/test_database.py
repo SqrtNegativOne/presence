@@ -24,7 +24,9 @@ def test_insert_and_get_student(tmp_db, dummy_embedding):
     assert "face_embedding" not in students[0]
 
     # get_all_students_with_embeddings should return numpy array
-    students_with_emb = database.get_all_students_with_embeddings("10-A", model_type="insightface")
+    students_with_emb = database.get_all_students_with_embeddings(
+        "10-A", model_type="insightface"
+    )
     assert len(students_with_emb) == 1
     emb = students_with_emb[0]["face_embedding"]
     assert isinstance(emb, np.ndarray)
@@ -78,7 +80,12 @@ def test_attendance_session_and_records(tmp_db, dummy_embedding):
 
     records = [
         {"student_id": sid1, "status": "present", "similarity": 0.88, "face_index": 1},
-        {"student_id": sid2, "status": "absent", "similarity": None, "face_index": None},
+        {
+            "student_id": sid2,
+            "status": "absent",
+            "similarity": None,
+            "face_index": None,
+        },
     ]
     database.insert_attendance_records(session_id, records)
 

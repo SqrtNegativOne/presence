@@ -10,15 +10,15 @@ KEY CONCEPTS:
   ArcFace embeddings are L2-normalised, so cosine similarity is equivalent to dot product.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
-from loguru import logger
 
 # InsightFace's main class — handles detection + recognition in one shot.
 from insightface.app import FaceAnalysis
+from loguru import logger
 
 # We cache the model in our own data/ folder so it's project-local.
 MODEL_CACHE_DIR = str(Path(__file__).parent.parent / "data")
@@ -31,7 +31,7 @@ THRESHOLD = 0.4
 # Singleton: load the model exactly once when this module is first imported.
 # Loading takes ~5s and uses ~500 MB of disk. We don't want to do it per request.
 # ---------------------------------------------------------------------------
-_face_app: Optional[FaceAnalysis] = None
+_face_app: FaceAnalysis | None = None
 
 
 def get_face_app() -> FaceAnalysis:
@@ -42,11 +42,16 @@ def get_face_app() -> FaceAnalysis:
     """
     global _face_app
     if _face_app is None:
-        logger.info("Loading InsightFace buffalo_l model (first run may download ~500 MB)…")
+        logger.info(
+            "Loading InsightFace buffalo_l model (first run may download ~500 MB)…"
+        )
         _face_app = FaceAnalysis(
             name="buffalo_l",
-            root=MODEL_CACHE_DIR,          # cache models here instead of ~/.insightface
-            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],  # try GPU, fall back to CPU
+            root=MODEL_CACHE_DIR,  # cache models here instead of ~/.insightface
+            providers=[
+                "CUDAExecutionProvider",
+                "CPUExecutionProvider",
+            ],  # try GPU, fall back to CPU
         )
         # det_size: the resolution InsightFace internally resizes to before detection.
         # 640×640 gives a good balance of speed and accuracy for group photos.
@@ -58,6 +63,7 @@ def get_face_app() -> FaceAnalysis:
 # ---------------------------------------------------------------------------
 # Helper: bytes → numpy image (BGR, which OpenCV and InsightFace expect)
 # ---------------------------------------------------------------------------
+
 
 def _bytes_to_bgr(image_bytes: bytes) -> np.ndarray:
     """Decode raw image bytes (JPEG/PNG/etc.) into a numpy BGR array."""
@@ -71,6 +77,7 @@ def _bytes_to_bgr(image_bytes: bytes) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def encode_single_face(image_bytes: bytes) -> np.ndarray:
     """
@@ -101,8 +108,8 @@ def encode_single_face(image_bytes: bytes) -> np.ndarray:
 def match_embeddings(
     query_embeddings: list[np.ndarray],
     known_students: list[dict],
-    threshold: Optional[float] = None,
-    bboxes: Optional[list[Optional[list[int]]]] = None,
+    threshold: float | None = None,
+    bboxes: Sequence[Sequence[int] | None] | None = None,
 ) -> list[dict]:
     """
     Match a list of raw face embeddings against known students using cosine similarity.
@@ -140,8 +147,10 @@ def match_embeddings(
     dim = len(norm_queries[0])
     # Filter known students to only those with matching embedding dimension
     matching_students = [
-        s for s in known_students
-        if isinstance(s.get("face_embedding"), np.ndarray) and len(s["face_embedding"]) == dim
+        s
+        for s in known_students
+        if isinstance(s.get("face_embedding"), np.ndarray)
+        and len(s["face_embedding"]) == dim
     ]
 
     effective_threshold = threshold
@@ -184,29 +193,35 @@ def match_embeddings(
 
         if best_match is not None:
             matched_student_ids.add(best_match["id"])
-            results.append({
-                "face_index": i + 1,
-                "bbox": bbox,
-                "student_id": best_match["id"],
-                "name": best_match["name"],
-                "roll_number": best_match["roll_number"],
-                "class_name": best_match["class_name"],
-                "status": "recognized",
-                "similarity": round(best_similarity, 4),
-            })
-            logger.debug(f"Face {i+1}: {best_match['name']} (similarity={best_similarity:.4f})")
+            results.append(
+                {
+                    "face_index": i + 1,
+                    "bbox": bbox,
+                    "student_id": best_match["id"],
+                    "name": best_match["name"],
+                    "roll_number": best_match["roll_number"],
+                    "class_name": best_match["class_name"],
+                    "status": "recognized",
+                    "similarity": round(best_similarity, 4),
+                }
+            )
+            logger.debug(
+                f"Face {i + 1}: {best_match['name']} (similarity={best_similarity:.4f})"
+            )
         else:
-            results.append({
-                "face_index": i + 1,
-                "bbox": bbox,
-                "student_id": None,
-                "name": "Unknown",
-                "roll_number": None,
-                "class_name": None,
-                "status": "unknown",
-                "similarity": round(max_sim_for_face, 4),
-            })
-            logger.debug(f"Face {i+1}: Unknown")
+            results.append(
+                {
+                    "face_index": i + 1,
+                    "bbox": bbox,
+                    "student_id": None,
+                    "name": "Unknown",
+                    "roll_number": None,
+                    "class_name": None,
+                    "status": "unknown",
+                    "similarity": round(max_sim_for_face, 4),
+                }
+            )
+            logger.debug(f"Face {i + 1}: Unknown")
 
     return results
 
@@ -229,4 +244,3 @@ def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[di
         threshold=THRESHOLD,
         bboxes=bboxes,
     )
-

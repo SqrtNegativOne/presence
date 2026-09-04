@@ -70,4 +70,6 @@ app.include_router(attendance.router)
 
 @app.get("/")
 async def root():
-    return {"message": "Presence API is running. Visit /docs for the interactive API explorer."}
+    return {
+        "message": "Presence API is running. Visit /docs for the interactive API explorer."
+    }
