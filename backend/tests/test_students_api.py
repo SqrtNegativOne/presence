@@ -102,3 +102,47 @@ def test_delete_student(client, dummy_embedding, dummy_image_bytes):
 
     del_res2 = client.delete(f"/api/students/{student_id}")
     assert del_res2.status_code == 404
+
+
+def test_enroll_student_embedding(client, dummy_embedding_128):
+    res = client.post(
+        "/api/students/enroll-embedding",
+        json={
+            "name": "David",
+            "roll_number": "CS104",
+            "class_name": "10-A",
+            "embedding": dummy_embedding_128.tolist(),
+            "model_type": "faceapi",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["name"] == "David"
+    assert data["roll_number"] == "CS104"
+    assert data["model_type"] == "faceapi"
+    assert "id" in data
+
+
+def test_enroll_student_embedding_duplicate(client, dummy_embedding_128):
+    client.post(
+        "/api/students/enroll-embedding",
+        json={
+            "name": "David",
+            "roll_number": "CS104",
+            "class_name": "10-A",
+            "embedding": dummy_embedding_128.tolist(),
+            "model_type": "faceapi",
+        },
+    )
+    res = client.post(
+        "/api/students/enroll-embedding",
+        json={
+            "name": "David Clone",
+            "roll_number": "CS104",
+            "class_name": "10-A",
+            "embedding": dummy_embedding_128.tolist(),
+            "model_type": "faceapi",
+        },
+    )
+    assert res.status_code == 409
+

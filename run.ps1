@@ -51,6 +51,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 Pop-Location
 
+# ---- Start PostgreSQL container ---------------------------------------------
+Write-Host "  Starting PostgreSQL database (docker compose up db -d)..." -ForegroundColor White
+docker compose up db -d
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  WARNING: docker compose up db -d failed. Ensure Docker is running or DATABASE_URL is configured." -ForegroundColor Yellow
+}
+
 # ---- Launch servers ---------------------------------------------------------
 Write-Host ""
 Write-Host "  Starting backend  ->  http://localhost:8000/docs" -ForegroundColor Green

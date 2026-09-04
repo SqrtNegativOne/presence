@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { BrowserRouter, Link, NavLink, Route, Routes } from "react-router-dom";
 import AttendancePage from "./pages/AttendancePage";
 import EnrollPage from "./pages/EnrollPage";
 import StudentsPage from "./pages/StudentsPage";
+import { ModelProvider, useModel } from "./context/ModelContext";
 
 /*
   NavLink's className prop receives { isActive } — React Router tells us
@@ -16,19 +17,102 @@ const navLinkClass = ({ isActive }) =>
       : "text-[var(--col-muted)] hover:text-[var(--col-text)]"
   }`;
 
-export default function App() {
-  return (
-    <BrowserRouter>
-      <div className="min-h-screen">
+function ModelSelector() {
+  const { engine, setEngine } = useModel();
+  const [showTooltip, setShowTooltip] = useState(false);
 
-        {/* ── Navigation ─────────────────────────────────────────────── */}
-        <nav
-          className="px-8 py-4 flex items-center gap-10"
-          style={{
-            background: "var(--col-surface)",
-            borderBottom: "1px solid var(--col-border)",
-          }}
+  return (
+    <div className="flex items-center gap-2 relative">
+      <span
+        className="text-[0.65rem] tracking-[0.12em] uppercase font-semibold text-[var(--col-muted)] hidden md:inline"
+        style={{ fontFamily: "'Space Mono', monospace" }}
+      >
+        Recognition Engine:
+      </span>
+
+      <div
+        className="flex border p-0.5"
+        style={{
+          borderColor: "var(--col-border2)",
+          background: "var(--col-surface2)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setEngine("local")}
+          aria-pressed={engine === "local"}
+          className={`px-2.5 py-1 text-[0.65rem] font-mono uppercase tracking-wider transition-colors duration-150 font-semibold ${
+            engine === "local"
+              ? "bg-[var(--col-accent)] text-[#06060f]"
+              : "text-[var(--col-muted)] hover:text-[var(--col-text)]"
+          }`}
+          title="Local mode runs entirely on your device — photos are never uploaded."
         >
+          Local (Private)
+        </button>
+        <button
+          type="button"
+          onClick={() => setEngine("cloud")}
+          aria-pressed={engine === "cloud"}
+          className={`px-2.5 py-1 text-[0.65rem] font-mono uppercase tracking-wider transition-colors duration-150 font-semibold ${
+            engine === "cloud"
+              ? "bg-[var(--col-accent)] text-[#06060f]"
+              : "text-[var(--col-muted)] hover:text-[var(--col-text)]"
+          }`}
+          title="Cloud mode uses a more accurate model on the server."
+        >
+          Cloud (Accurate)
+        </button>
+      </div>
+
+      {/* Helper / Explainer Tooltip */}
+      <div className="relative flex items-center">
+        <button
+          type="button"
+          onMouseEnter={() => setShowTooltip(true)}
+          onMouseLeave={() => setShowTooltip(false)}
+          onClick={() => setShowTooltip((v) => !v)}
+          className="w-4 h-4 rounded-full flex items-center justify-center text-[0.6rem] font-mono border text-[var(--col-muted)] hover:text-[var(--col-accent)] transition-colors cursor-pointer"
+          style={{ borderColor: "var(--col-border2)" }}
+          aria-label="Recognition engine explanation"
+        >
+          ?
+        </button>
+
+        {showTooltip && (
+          <div
+            className="absolute right-0 top-full mt-2 w-72 p-3 text-xs shadow-xl z-50 pointer-events-none"
+            style={{
+              background: "var(--col-surface)",
+              border: "1px solid var(--col-border2)",
+              color: "var(--col-text)",
+            }}
+          >
+            <p className="font-semibold text-[var(--col-accent)] text-[0.65rem] uppercase tracking-wider font-mono mb-1">
+              Recognition Engine
+            </p>
+            <p className="text-[0.75rem] leading-relaxed text-[var(--col-muted)]">
+              Local mode runs entirely on your device — photos are never uploaded. Cloud mode uses a more accurate model on the server.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AppContent() {
+  return (
+    <div className="min-h-screen">
+      {/* ── Navigation ─────────────────────────────────────────────── */}
+      <nav
+        className="px-8 py-4 flex items-center justify-between gap-6 flex-wrap"
+        style={{
+          background: "var(--col-surface)",
+          borderBottom: "1px solid var(--col-border)",
+        }}
+      >
+        <div className="flex items-center gap-10 flex-wrap">
           {/* Wordmark — Fraunces at opsz 9 has tighter, more compact serifs */}
           <Link
             to="/"
@@ -99,20 +183,32 @@ export default function App() {
               )}
             </NavLink>
           </div>
-        </nav>
+        </div>
 
-        {/* ── Page content ───────────────────────────────────────────── */}
-        <main className="max-w-5xl mx-auto px-6 py-10">
-          <Routes>
-            <Route path="/"           element={<Home />} />
-            <Route path="/enroll"     element={<EnrollPage />} />
-            <Route path="/students"   element={<StudentsPage />} />
-            <Route path="/attendance" element={<AttendancePage />} />
-          </Routes>
-        </main>
+        {/* Model Engine Selector */}
+        <ModelSelector />
+      </nav>
 
-      </div>
-    </BrowserRouter>
+      {/* ── Page content ───────────────────────────────────────────── */}
+      <main className="max-w-5xl mx-auto px-6 py-10">
+        <Routes>
+          <Route path="/"           element={<Home />} />
+          <Route path="/enroll"     element={<EnrollPage />} />
+          <Route path="/students"   element={<StudentsPage />} />
+          <Route path="/attendance" element={<AttendancePage />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ModelProvider>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </ModelProvider>
   );
 }
 

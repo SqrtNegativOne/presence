@@ -1,6 +1,7 @@
 import csv
 import io
 from unittest.mock import patch
+import numpy as np
 import pytest
 
 import database
@@ -116,3 +117,53 @@ def test_export_by_class_and_date(client, dummy_embedding, dummy_image_bytes):
 def test_export_not_found(client):
     res = client.get("/api/attendance/export?session_id=99999")
     assert res.status_code == 404
+
+
+def test_match_embeddings_attendance(client, dummy_embedding_128):
+    # Enroll Alice (present) and Bob (absent) with faceapi
+    sid_alice = database.insert_student("Alice", "CS101", "10-A", dummy_embedding_128, model_type="faceapi")
+    sid_bob = database.insert_student("Bob", "CS102", "10-A", -dummy_embedding_128, model_type="faceapi")
+
+    # Send Alice's embedding + an unknown random embedding
+    unknown_emb = np.random.randn(128).astype(np.float32)
+    unknown_emb /= np.linalg.norm(unknown_emb)
+
+    response = client.post(
+        "/api/attendance/match-embeddings",
+        json={
+            "class_name": "10-A",
+            "attendance_date": "2026-03-05",
+            "embeddings": [dummy_embedding_128.tolist(), unknown_emb.tolist()],
+            "model_type": "faceapi",
+            "photo_hash": "local-hash-123",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["session_id"] > 0
+    assert data["class_name"] == "10-A"
+    assert data["date"] == "2026-03-05"
+    assert data["total_faces"] == 2
+    assert data["recognized_count"] == 1
+    assert data["unknown_count"] == 1
+    assert data["absent_count"] == 1
+
+    # Verify session detail in DB
+    session_res = client.get(f"/api/attendance/sessions/{data['session_id']}")
+    assert session_res.status_code == 200
+    session_data = session_res.json()
+    assert len(session_data["records"]) == 2  # Alice and Bob
+
+
+def test_match_embeddings_no_students(client, dummy_embedding_128):
+    response = client.post(
+        "/api/attendance/match-embeddings",
+        json={
+            "class_name": "GhostClass",
+            "embeddings": [dummy_embedding_128.tolist()],
+            "model_type": "faceapi",
+        },
+    )
+    assert response.status_code == 400
+    assert "No students enrolled yet" in response.json()["detail"]
+

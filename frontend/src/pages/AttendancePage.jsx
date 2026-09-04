@@ -1,8 +1,12 @@
 import React, { useRef, useState } from "react";
-import { downloadCsv, processAttendance } from "../api";
+import { downloadCsv, matchEmbeddings, processAttendance } from "../api";
 import CameraCapture from "../components/CameraCapture";
+import { useModel } from "../context/ModelContext";
+import localFaceService from "../services/localFaceService";
 
 export default function AttendancePage() {
+  const { engine, isLocal } = useModel();
+
   // Form state
   const [className, setClassName] = useState("");
   const [date, setDate]           = useState(todayStr());
@@ -75,14 +79,128 @@ export default function AttendancePage() {
     setError(null);
     setResult(null);
 
-    const fd = new FormData();
-    fd.append("class_name",      className);
-    fd.append("attendance_date", date);
-    fd.append("photo",           photo, photo.name || "attendance_group_photo.jpg");
-
     try {
-      const data = await processAttendance(fd);
-      setResult(data);
+      if (isLocal) {
+        // Step 1: Detect all faces locally in the browser
+        const detectedFaces = await localFaceService.detectAllFaces(photo);
+        if (detectedFaces.length === 0) {
+          throw new Error("No faces detected in group photo. Please ensure good lighting and clear faces.");
+        }
+
+        // Step 2: Extract embeddings
+        const embeddings = detectedFaces.map((f) => f.descriptor);
+
+        // Compute SHA-256 hash of photo for session tracking / deduplication
+        let photoHash = null;
+        try {
+          const buffer = await photo.arrayBuffer();
+          const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+          photoHash = Array.from(new Uint8Array(hashBuffer))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+        } catch (hErr) {
+          // Non-critical
+        }
+
+        // Step 3: Match embeddings against enrolled students
+        const matchData = await matchEmbeddings({
+          class_name: className.trim(),
+          attendance_date: date,
+          embeddings,
+          model_type: "faceapi",
+          photo_hash: photoHash,
+        });
+
+        // Step 4: Map backend match records to detected face bounding boxes
+        let faceResults = [];
+        let absentStudents = [];
+
+        if (Array.isArray(matchData.results)) {
+          faceResults = matchData.results
+            .filter((r) => r.status !== "absent")
+            .map((r) => ({
+              ...r,
+              bbox: r.bbox || (r.face_index != null && detectedFaces[r.face_index]?.box) || null,
+            }));
+          absentStudents = matchData.results.filter((r) => r.status === "absent");
+        } else {
+          const records = matchData.records || [];
+          const presentRecords = records.filter((r) => r.status === "present");
+          const unmatched = matchData.unmatched_faces || [];
+
+          for (let i = 0; i < detectedFaces.length; i++) {
+            const det = detectedFaces[i];
+            const matched = presentRecords.find((r) => r.face_index === i);
+            if (matched) {
+              faceResults.push({
+                face_index: i,
+                bbox: det.box,
+                student_id: matched.student_id,
+                name: matched.name,
+                roll_number: matched.roll_number,
+                class_name: matched.class_name || className,
+                status: "recognized",
+                similarity: matched.similarity,
+              });
+            } else {
+              const unrec = unmatched.find((u) => u.face_index === i);
+              faceResults.push({
+                face_index: i,
+                bbox: det.box,
+                student_id: null,
+                name: "Unknown",
+                roll_number: null,
+                class_name: className,
+                status: "unknown",
+                similarity: unrec?.similarity || null,
+              });
+            }
+          }
+
+          absentStudents = records
+            .filter((r) => r.status === "absent")
+            .map((a) => ({
+              face_index: null,
+              bbox: null,
+              student_id: a.student_id,
+              name: a.name,
+              roll_number: a.roll_number,
+              class_name: a.class_name || className,
+              status: "absent",
+              similarity: null,
+            }));
+        }
+
+        // Step 5: Annotate the group photo on a client-side canvas
+        const annotatedDataUrl = await localFaceService.annotateImage(photo, faceResults);
+
+        const recognizedCount =
+          matchData.recognized_count ?? faceResults.filter((f) => f.status === "recognized").length;
+        const unknownCount =
+          matchData.unknown_count ?? faceResults.filter((f) => f.status === "unknown").length;
+        const totalFaces = matchData.total_faces ?? detectedFaces.length;
+
+        setResult({
+          session_id: matchData.session_id,
+          annotated_image: annotatedDataUrl,
+          date: matchData.attendance_date || matchData.date || date,
+          class_name: matchData.class_name || className,
+          results: [...faceResults, ...absentStudents],
+          total_faces: totalFaces,
+          recognized_count: recognizedCount,
+          unknown_count: unknownCount,
+          absent_count: matchData.absent_count ?? absentStudents.length,
+        });
+      } else {
+        // Cloud mode: upload full photo via FormData to FastAPI backend
+        const fd = new FormData();
+        fd.append("class_name",      className.trim());
+        fd.append("attendance_date", date);
+        fd.append("photo",           photo, photo.name || "attendance_group_photo.jpg");
+
+        const data = await processAttendance(fd);
+        setResult(data);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -105,7 +223,19 @@ export default function AttendancePage() {
 
       {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="mb-8">
-        <span className="page-label">03 / Attendance</span>
+        <div className="flex items-center justify-between gap-4 mb-2">
+          <span className="page-label mb-0">03 / Attendance</span>
+          <span
+            className="text-[0.65rem] font-mono tracking-wider uppercase px-2 py-0.5 border"
+            style={{
+              borderColor: isLocal ? "var(--col-accent)" : "var(--col-border2)",
+              color: isLocal ? "var(--col-accent)" : "var(--col-muted)",
+              background: "var(--col-surface2)",
+            }}
+          >
+            {isLocal ? "🔒 Local Mode (Browser)" : "☁️ Cloud Mode (Server)"}
+          </span>
+        </div>
         <h1
           className="text-3xl font-bold"
           style={{ fontFamily: "'Fraunces', serif" }}
@@ -113,7 +243,9 @@ export default function AttendancePage() {
           Take Attendance
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--col-muted)" }}>
-          Upload a group photo — faces are matched against enrolled students.
+          {isLocal
+            ? "Group photo is scanned directly in your browser — faces are matched against enrolled embeddings."
+            : "Upload a group photo — faces are matched against enrolled students via server ML."}
         </p>
       </div>
 
@@ -244,7 +376,9 @@ export default function AttendancePage() {
           <div style={{ borderTop: "1px solid var(--col-border)" }}>
             <button type="submit" disabled={loading} className="btn-amber">
               {loading
-                ? "Scanning faces… this may take 5–15 s"
+                ? isLocal
+                  ? "Scanning faces locally… this may take a few seconds"
+                  : "Scanning faces on server… this may take 5–15 s"
                 : "Process Attendance"}
             </button>
           </div>
@@ -312,11 +446,15 @@ export default function AttendancePage() {
                 Annotated Photo
               </p>
               {/*
-                The backend returns a plain base64 string (no "data:" prefix),
-                so we add "data:image/png;base64," here in the JSX.
+                Backend returns plain base64 (cloud mode), while local mode
+                generates a canvas data URL ("data:image/png;base64,...").
               */}
               <img
-                src={`data:image/png;base64,${result.annotated_image}`}
+                src={
+                  result.annotated_image?.startsWith("data:")
+                    ? result.annotated_image
+                    : `data:image/png;base64,${result.annotated_image}`
+                }
                 alt="Annotated attendance photo"
                 className="w-full object-contain max-h-[500px]"
                 style={{ border: "1px solid var(--col-border2)" }}

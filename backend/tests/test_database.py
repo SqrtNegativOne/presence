@@ -1,5 +1,5 @@
-import sqlite3
 import numpy as np
+import psycopg
 import pytest
 
 import database
@@ -11,6 +11,7 @@ def test_insert_and_get_student(tmp_db, dummy_embedding):
         roll_number="CS101",
         class_name="10-A",
         embedding=dummy_embedding,
+        model_type="insightface",
     )
     assert student_id > 0
 
@@ -19,10 +20,11 @@ def test_insert_and_get_student(tmp_db, dummy_embedding):
     assert len(students) == 1
     assert students[0]["name"] == "Alice Smith"
     assert students[0]["roll_number"] == "CS101"
+    assert students[0]["model_type"] == "insightface"
     assert "face_embedding" not in students[0]
 
     # get_all_students_with_embeddings should return numpy array
-    students_with_emb = database.get_all_students_with_embeddings("10-A")
+    students_with_emb = database.get_all_students_with_embeddings("10-A", model_type="insightface")
     assert len(students_with_emb) == 1
     emb = students_with_emb[0]["face_embedding"]
     assert isinstance(emb, np.ndarray)
@@ -33,7 +35,7 @@ def test_insert_and_get_student(tmp_db, dummy_embedding):
 
 def test_insert_duplicate_roll_number(tmp_db, dummy_embedding):
     database.insert_student("Alice", "CS101", "10-A", dummy_embedding)
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(psycopg.IntegrityError):
         database.insert_student("Bob", "CS101", "10-A", dummy_embedding)
 
 
@@ -41,6 +43,23 @@ def test_delete_student(tmp_db, dummy_embedding):
     sid = database.insert_student("Alice", "CS101", "10-A", dummy_embedding)
     assert database.delete_student(sid) is True
     assert database.delete_student(sid) is False
+
+
+def test_insert_faceapi_embedding_128(tmp_db, dummy_embedding_128):
+    sid = database.insert_student(
+        name="Charlie Brown",
+        roll_number="CS103",
+        class_name="10-B",
+        embedding=dummy_embedding_128,
+        model_type="faceapi",
+    )
+    assert sid > 0
+
+    students = database.get_all_students_with_embeddings("10-B", model_type="faceapi")
+    assert len(students) == 1
+    assert students[0]["model_type"] == "faceapi"
+    assert students[0]["face_embedding"].shape == (128,)
+    assert np.allclose(students[0]["face_embedding"], dummy_embedding_128)
 
 
 def test_attendance_session_and_records(tmp_db, dummy_embedding):

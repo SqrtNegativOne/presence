@@ -1,8 +1,12 @@
 import React, { useRef, useState } from "react";
-import { enrollStudent } from "../api";
+import { enrollStudent, enrollStudentEmbedding } from "../api";
 import CameraCapture from "../components/CameraCapture";
+import { useModel } from "../context/ModelContext";
+import localFaceService from "../services/localFaceService";
 
 export default function EnrollPage() {
+  const { engine, isLocal } = useModel();
+
   // Form field state
   const [name, setName]           = useState("");
   const [roll, setRoll]           = useState("");
@@ -66,19 +70,36 @@ export default function EnrollPage() {
     setLoading(true);
     setToast(null);
 
-    // FormData is the browser's way of sending a mix of text + file data
-    // in one HTTP request (multipart/form-data format).
-    const fd = new FormData();
-    fd.append("name",        name);
-    fd.append("roll_number", roll);
-    fd.append("class_name",  className);
-    fd.append("photo",       photo, photo.name || "solo_portrait.jpg");
-
     try {
-      const result = await enrollStudent(fd);
-      showToast("success", `${result.name} enrolled successfully.`);
-      // Reset form after success
-      setName(""); setRoll(""); setClassName("");
+      if (isLocal) {
+        // Local mode: detect face in browser using face-api.js and extract 128-d descriptor
+        const faceData = await localFaceService.detectSingleFace(photo);
+
+        const result = await enrollStudentEmbedding({
+          name: name.trim(),
+          roll_number: roll.trim(),
+          class_name: className.trim(),
+          embedding: faceData.descriptor,
+          model_type: "faceapi",
+        });
+
+        showToast("success", `${result.name || name} enrolled successfully (Local Face-API engine).`);
+      } else {
+        // Cloud mode: upload full photo via FormData to FastAPI backend
+        const fd = new FormData();
+        fd.append("name",        name.trim());
+        fd.append("roll_number", roll.trim());
+        fd.append("class_name",  className.trim());
+        fd.append("photo",       photo, photo.name || "solo_portrait.jpg");
+
+        const result = await enrollStudent(fd);
+        showToast("success", `${result.name} enrolled successfully (Cloud InsightFace engine).`);
+      }
+
+      // Reset form on success
+      setName("");
+      setRoll("");
+      setClassName("");
       clearPhoto();
     } catch (err) {
       showToast("error", err.message);
@@ -98,7 +119,19 @@ export default function EnrollPage() {
 
       {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="mb-8">
-        <span className="page-label">01 / Enroll</span>
+        <div className="flex items-center justify-between gap-4 mb-2">
+          <span className="page-label mb-0">01 / Enroll</span>
+          <span
+            className="text-[0.65rem] font-mono tracking-wider uppercase px-2 py-0.5 border"
+            style={{
+              borderColor: isLocal ? "var(--col-accent)" : "var(--col-border2)",
+              color: isLocal ? "var(--col-accent)" : "var(--col-muted)",
+              background: "var(--col-surface2)",
+            }}
+          >
+            {isLocal ? "🔒 Local Mode (Browser)" : "☁️ Cloud Mode (Server)"}
+          </span>
+        </div>
         <h1
           className="text-3xl font-bold"
           style={{ fontFamily: "'Fraunces', serif" }}
@@ -106,7 +139,9 @@ export default function EnrollPage() {
           New Student
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--col-muted)" }}>
-          Upload one clear, frontal portrait per student.
+          {isLocal
+            ? "Photo is processed locally in your browser — only the 128-d face embedding is saved."
+            : "Upload one clear, frontal portrait per student for server-side processing."}
         </p>
       </div>
 
@@ -254,7 +289,11 @@ export default function EnrollPage() {
           {/* Submit button separated by a border — like a form footer */}
           <div style={{ borderTop: "1px solid var(--col-border)" }}>
             <button type="submit" disabled={loading} className="btn-amber">
-              {loading ? "Processing…" : "Enroll Student"}
+              {loading
+                ? isLocal
+                  ? "Analyzing Face Locally…"
+                  : "Processing…"
+                : "Enroll Student"}
             </button>
           </div>
 

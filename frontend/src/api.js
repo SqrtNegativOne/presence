@@ -26,6 +26,40 @@ export async function enrollStudent(formData) {
 }
 
 /**
+ * Enroll a student using a client-side computed embedding (JSON body).
+ * @param {Object} params
+ * @param {string} params.name
+ * @param {string} params.roll_number
+ * @param {string} params.class_name
+ * @param {Array<number>} params.embedding - 128-d face descriptor array
+ * @param {string} [params.model_type='faceapi']
+ */
+export async function enrollStudentEmbedding({
+  name,
+  roll_number,
+  class_name,
+  embedding,
+  model_type = "faceapi",
+}) {
+  const res = await fetch(`${BASE}/students/enroll-embedding`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name,
+      roll_number,
+      class_name,
+      embedding,
+      model_type,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Enrollment with embedding failed");
+  }
+  return res.json();
+}
+
+/**
  * List all enrolled students, optionally filtered by class.
  * @param {string|null} className
  */
@@ -65,6 +99,53 @@ export async function processAttendance(formData) {
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.detail || "Attendance processing failed");
+  }
+  return res.json();
+}
+
+/**
+ * Match client-side extracted embeddings against enrolled students.
+ * @param {Object} params
+ * @param {string} params.class_name
+ * @param {string} [params.attendance_date]
+ * @param {Array<Array<number>>} params.embeddings - Array of 128-d face descriptors
+ * @param {string} [params.model_type='faceapi']
+ * @param {string|null} [params.photo_hash]
+ * @returns {Promise<{
+ *   session_id: number,
+ *   class_name: string,
+ *   attendance_date: string,
+ *   total_faces: number,
+ *   recognized_count: number,
+ *   unknown_count: number,
+ *   records: Array<any>,
+ *   unmatched_faces: Array<any>
+ * }>}
+ */
+export async function matchEmbeddings({
+  class_name,
+  attendance_date,
+  embeddings,
+  model_type = "faceapi",
+  photo_hash = null,
+}) {
+  const payload = {
+    class_name,
+    attendance_date,
+    embeddings,
+    model_type,
+  };
+  if (photo_hash) {
+    payload.photo_hash = photo_hash;
+  }
+  const res = await fetch(`${BASE}/attendance/match-embeddings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Attendance matching failed");
   }
   return res.json();
 }

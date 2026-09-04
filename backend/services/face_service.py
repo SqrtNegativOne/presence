@@ -98,65 +98,88 @@ def encode_single_face(image_bytes: bytes) -> np.ndarray:
     return embedding
 
 
-def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[dict]:
+def match_embeddings(
+    query_embeddings: list[np.ndarray],
+    known_students: list[dict],
+    threshold: Optional[float] = None,
+    bboxes: Optional[list[Optional[list[int]]]] = None,
+) -> list[dict]:
     """
-    Detect all faces in a group photo and match each to the known students.
+    Match a list of raw face embeddings against known students using cosine similarity.
 
     Args:
-        image_bytes: raw bytes of the group photo
+        query_embeddings: list of 1D numpy float32 arrays (e.g. 128-d or 512-d)
         known_students: list of dicts with keys: id, name, roll_number, class_name, face_embedding (numpy array)
+        threshold: cosine similarity threshold (default: 0.6 for <=128-d, THRESHOLD for >128-d)
+        bboxes: optional list of [x1, y1, x2, y2] bounding boxes matching query_embeddings
 
     Returns:
-        List of dicts, one per detected face:
+        List of dicts, one per query embedding:
             {
-              "face_index":  int,        # 1-based display index
-              "bbox":        [x1,y1,x2,y2],  # pixel coords for annotation
-              "name":        str,         # student name or "Unknown"
+              "face_index":  int,
+              "bbox":        [x1, y1, x2, y2] | None,
+              "student_id":  int | None,
+              "name":        str,
               "roll_number": str | None,
               "class_name":  str | None,
               "status":      "recognized" | "unknown",
-              "similarity":  float,       # best cosine similarity found
+              "similarity":  float,
             }
     """
-    app = get_face_app()
-    img_bgr = _bytes_to_bgr(image_bytes)
-    faces = app.get(img_bgr)
-
-    logger.info(f"Detected {len(faces)} faces in group photo")
     results = []
+    if not query_embeddings:
+        return results
 
-    # Pre-compute matrix of all known embeddings for fast vectorized operations
-    if known_students:
-        known_embeddings = np.array([s["face_embedding"] for s in known_students])
-    
+    # Normalize query embeddings and ensure float32 arrays
+    norm_queries = []
+    for q in query_embeddings:
+        arr = np.asarray(q, dtype=np.float32)
+        norm = np.linalg.norm(arr)
+        norm_queries.append(arr / norm if norm > 0 else arr)
+
+    dim = len(norm_queries[0])
+    # Filter known students to only those with matching embedding dimension
+    matching_students = [
+        s for s in known_students
+        if isinstance(s.get("face_embedding"), np.ndarray) and len(s["face_embedding"]) == dim
+    ]
+
+    effective_threshold = threshold
+    if effective_threshold is None:
+        effective_threshold = 0.6 if dim <= 128 else THRESHOLD
+
+    known_embeddings = None
+    if matching_students:
+        known_normed = []
+        for s in matching_students:
+            emb = s["face_embedding"]
+            norm = np.linalg.norm(emb)
+            known_normed.append(emb / norm if norm > 0 else emb)
+        known_embeddings = np.array(known_normed, dtype=np.float32)
+
     matched_student_ids = set()
 
-    for i, face in enumerate(faces):
-        bbox = [int(v) for v in face.bbox]  # [x1, y1, x2, y2]
-        query_embedding = face.embedding     # 512-d float32
+    for i, query_embedding in enumerate(norm_queries):
+        bbox = bboxes[i] if bboxes and i < len(bboxes) else None
 
         best_match = None
         best_similarity = -1.0
         max_sim_for_face = 0.0
-        
-        if known_students:
-            # Compute similarity of this face against ALL known students in a single vectorized operation
-            # ArcFace embeddings are L2-normalised, so dot product equals cosine similarity
+
+        if known_embeddings is not None and len(known_embeddings) > 0:
             similarities = np.dot(known_embeddings, query_embedding)
             max_sim_for_face = float(np.max(similarities))
-            
-            # Sort indices by similarity descending
+
             sorted_indices = np.argsort(similarities)[::-1]
-            
             for idx in sorted_indices:
-                sim = similarities[idx]
-                if sim < THRESHOLD:
-                    break  # Remaining matches are even lower, stop checking
-                
-                student = known_students[idx]
+                sim = float(similarities[idx])
+                if sim < effective_threshold:
+                    break
+
+                student = matching_students[idx]
                 if student["id"] not in matched_student_ids:
                     best_match = student
-                    best_similarity = float(sim)
+                    best_similarity = sim
                     break
 
         if best_match is not None:
@@ -186,3 +209,24 @@ def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[di
             logger.debug(f"Face {i+1}: Unknown")
 
     return results
+
+
+def match_group_photo(image_bytes: bytes, known_students: list[dict]) -> list[dict]:
+    """
+    Detect all faces in a group photo and match each to the known students.
+    """
+    app = get_face_app()
+    img_bgr = _bytes_to_bgr(image_bytes)
+    faces = app.get(img_bgr)
+
+    logger.info(f"Detected {len(faces)} faces in group photo")
+    query_embeddings = [face.embedding for face in faces]
+    bboxes = [[int(v) for v in face.bbox] for face in faces]
+
+    return match_embeddings(
+        query_embeddings=query_embeddings,
+        known_students=known_students,
+        threshold=THRESHOLD,
+        bboxes=bboxes,
+    )
+

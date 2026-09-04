@@ -1,6 +1,4 @@
 import os
-import tempfile
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -10,18 +8,34 @@ from fastapi.testclient import TestClient
 import database
 from main import app
 
+TEST_DB_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    os.getenv("DATABASE_URL", "postgresql://presence:presence@127.0.0.1:5433/presence"),
+)
+
+
+@pytest.fixture(autouse=True)
+def setup_test_db():
+    """Point database to test PostgreSQL instance and ensure tables exist."""
+    database.set_database_url(TEST_DB_URL)
+    database.init_db()
+    yield
+    database.close_pool()
+
 
 @pytest.fixture
-def tmp_db(tmp_path):
-    """Fixture to provide a clean temporary SQLite database for each test."""
-    db_file = tmp_path / "test_presence.db"
-    old_db_path = database.DB_PATH
-    database.DB_PATH = db_file
-    database.init_db()
-    try:
-        yield db_file
-    finally:
-        database.DB_PATH = old_db_path
+def tmp_db():
+    """Fixture to provide a clean truncated database for each test."""
+    database.set_database_url(TEST_DB_URL)
+    with database.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE attendance_records, attendance_sessions, students RESTART IDENTITY CASCADE;")
+        conn.commit()
+    yield
+    with database.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE attendance_records, attendance_sessions, students RESTART IDENTITY CASCADE;")
+        conn.commit()
 
 
 @pytest.fixture
@@ -35,6 +49,14 @@ def client(tmp_db):
 def dummy_embedding():
     """Generate a normalized 512-d float32 embedding."""
     vec = np.random.randn(512).astype(np.float32)
+    norm = np.linalg.norm(vec)
+    return vec / norm
+
+
+@pytest.fixture
+def dummy_embedding_128():
+    """Generate a normalized 128-d float32 embedding for face-api.js."""
+    vec = np.random.randn(128).astype(np.float32)
     norm = np.linalg.norm(vec)
     return vec / norm
 

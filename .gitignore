@@ -7,3 +7,6 @@ dist/
 bash.exe.stackdump
 buffalo_l.zip
 *.onnx
+*.db
+backend/data/
+.env

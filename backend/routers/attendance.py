@@ -12,11 +12,24 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
+from pydantic import BaseModel, Field
+import numpy as np
+
 import database
-from services.face_service import match_group_photo
+from services.face_service import match_embeddings, match_group_photo
 from services.image_service import annotate_image
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
+
+
+class MatchEmbeddingsRequest(BaseModel):
+    class_name: str
+    attendance_date: str = Field(default="")
+    embeddings: list[list[float]] = Field(default_factory=list)
+    model_type: str = Field(default="faceapi")
+    photo_hash: Optional[str] = None
+    bboxes: Optional[list[Optional[list[int]]]] = None
+
 
 
 @router.post("/process")
@@ -117,6 +130,100 @@ async def process_attendance(
     return {
         "session_id": session_id,
         "annotated_image": annotated_b64,
+        "date": attendance_date,
+        "class_name": class_name,
+        "results": face_results + absent_students,
+        "total_faces": len(face_results),
+        "recognized_count": len(recognized),
+        "unknown_count": len(unknown),
+        "absent_count": len(absent_students),
+    }
+
+
+@router.post("/match-embeddings")
+async def match_embeddings_attendance(payload: MatchEmbeddingsRequest):
+    """
+    Match client-computed face embeddings against enrolled students.
+    Used in local mode where the browser extracts embeddings and never uploads the group photo.
+    """
+    class_name = payload.class_name.strip()
+    attendance_date = payload.attendance_date.strip() or str(date.today())
+    model_type = payload.model_type.strip() or "faceapi"
+
+    if not class_name:
+        raise HTTPException(status_code=400, detail="class_name is required.")
+
+    # Load enrolled students for this class with matching model_type
+    all_students = database.get_all_students_with_embeddings(class_name, model_type=model_type)
+    if not all_students:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No students enrolled yet for class '{class_name}' with model '{model_type}'. Please enroll students before taking attendance."
+        )
+
+    query_embeddings = [np.array(emb, dtype=np.float32) for emb in payload.embeddings]
+    face_results = match_embeddings(
+        query_embeddings=query_embeddings,
+        known_students=all_students,
+        bboxes=payload.bboxes,
+    )
+
+    recognized = [f for f in face_results if f["status"] == "recognized"]
+    unknown = [f for f in face_results if f["status"] == "unknown"]
+
+    # Identify absent students (enrolled minus recognized)
+    student_map = {s["id"]: s for s in all_students}
+    enrolled_ids = set(student_map.keys())
+    recognized_ids = {r["student_id"] for r in recognized if r.get("student_id")}
+    absent_ids = enrolled_ids - recognized_ids
+
+    absent_students = [
+        {
+            "face_index": None,
+            "bbox": None,
+            "student_id": student_map[sid]["id"],
+            "name": student_map[sid]["name"],
+            "roll_number": student_map[sid]["roll_number"],
+            "class_name": student_map[sid]["class_name"],
+            "status": "absent",
+            "similarity": None,
+        }
+        for sid in sorted(
+            absent_ids,
+            key=lambda sid: (student_map[sid]["roll_number"], student_map[sid]["name"]),
+        )
+    ]
+
+    # Persist the attendance session
+    session_id = database.create_attendance_session(
+        class_name=class_name,
+        attendance_date=attendance_date,
+        total_faces=len(face_results),
+        recognized_count=len(recognized),
+        unknown_count=len(unknown),
+        photo_hash=payload.photo_hash,
+    )
+
+    # Persist attendance records for all enrolled students
+    records_to_insert = []
+    for r in recognized:
+        records_to_insert.append({
+            "student_id": r["student_id"],
+            "status": "present",
+            "similarity": r.get("similarity"),
+            "face_index": r.get("face_index"),
+        })
+    for a in absent_students:
+        records_to_insert.append({
+            "student_id": a["student_id"],
+            "status": "absent",
+            "similarity": None,
+            "face_index": None,
+        })
+    database.insert_attendance_records(session_id, records_to_insert)
+
+    return {
+        "session_id": session_id,
         "date": attendance_date,
         "class_name": class_name,
         "results": face_results + absent_students,

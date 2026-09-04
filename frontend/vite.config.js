@@ -23,4 +23,13 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "face-api": ["@vladmandic/face-api"],
+        },
+      },
+    },
+  },
 });
