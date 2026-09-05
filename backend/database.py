@@ -14,6 +14,28 @@ from loguru import logger
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+def _load_env_file() -> None:
+    for candidate in [
+        os.path.join(os.path.dirname(__file__), ".env"),
+        os.path.join(os.path.dirname(__file__), "..", ".env"),
+    ]:
+        if os.path.isfile(candidate):
+            try:
+                with open(candidate, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip("'\"")
+                            if k not in os.environ:
+                                os.environ[k] = v
+            except Exception:
+                pass
+
+
+_load_env_file()
+
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://presence:presence@localhost:5432/presence",
@@ -24,15 +46,46 @@ _pool: ConnectionPool | None = None
 
 def get_pool() -> ConnectionPool:
     """Return the global ConnectionPool instance, initializing it if necessary."""
-    global _pool
+    global _pool, DATABASE_URL
     if _pool is None or _pool.closed:
-        _pool = ConnectionPool(
-            conninfo=DATABASE_URL,
-            min_size=1,
-            max_size=10,
-            kwargs={"row_factory": dict_row, "autocommit": False},
-            open=True,
-        )
+        try:
+            _pool = ConnectionPool(
+                conninfo=DATABASE_URL,
+                min_size=1,
+                max_size=10,
+                kwargs={"row_factory": dict_row, "autocommit": False},
+                open=True,
+                timeout=5.0,
+            )
+            # Verify connection works promptly
+            with _pool.connection(timeout=3.0):
+                pass
+        except Exception as exc:
+            if "DATABASE_URL" not in os.environ and "5432" in DATABASE_URL:
+                fallback_url = DATABASE_URL.replace("5432", "5433")
+                logger.warning(
+                    f"Failed to connect to default database at {DATABASE_URL}: {exc}. "
+                    f"Attempting fallback at {fallback_url}..."
+                )
+                try:
+                    if _pool is not None and not _pool.closed:
+                        _pool.close()
+                    _pool = ConnectionPool(
+                        conninfo=fallback_url,
+                        min_size=1,
+                        max_size=10,
+                        kwargs={"row_factory": dict_row, "autocommit": False},
+                        open=True,
+                        timeout=5.0,
+                    )
+                    with _pool.connection(timeout=3.0):
+                        pass
+                    DATABASE_URL = fallback_url
+                    logger.success(f"Connected to fallback database at {DATABASE_URL}")
+                    return _pool
+                except Exception:
+                    pass
+            raise
     return _pool
 
 

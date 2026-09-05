@@ -51,11 +51,72 @@ if ($LASTEXITCODE -ne 0) {
 }
 Pop-Location
 
-# ---- Start PostgreSQL container ---------------------------------------------
-Write-Host "  Starting PostgreSQL database (docker compose up db -d)..." -ForegroundColor White
-docker compose up db -d
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  WARNING: docker compose up db -d failed. Ensure Docker is running or DATABASE_URL is configured." -ForegroundColor Yellow
+# ---- Database Setup ---------------------------------------------------------
+$dbUrl = $null
+
+# 1. Try Docker if running
+$dockerAvailable = $false
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    & docker info > $null 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $dockerAvailable = $true
+    }
+}
+
+if ($dockerAvailable) {
+    Write-Host "  Starting PostgreSQL database via Docker (docker compose up db -d)..." -ForegroundColor White
+    docker compose up db -d
+    if ($LASTEXITCODE -eq 0) {
+        $dbUrl = "postgresql://presence:presence@localhost:5432/presence"
+        Write-Host "  Docker database started on port 5432." -ForegroundColor Green
+    }
+}
+
+# 2. If Docker is not available or failed, try local PostgreSQL installation
+if (-not $dbUrl) {
+    $pgBin = $null
+    if (Get-Command pg_ctl -ErrorAction SilentlyContinue) {
+        $pgBin = Split-Path (Get-Command pg_ctl).Source
+    } else {
+        $pgDirs = Get-ChildItem "C:\Program Files\PostgreSQL" -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+        foreach ($d in $pgDirs) {
+            if (Test-Path "$($d.FullName)\bin\pg_ctl.exe") {
+                $pgBin = "$($d.FullName)\bin"
+                break
+            }
+        }
+    }
+
+    if ($pgBin) {
+        Write-Host "  Detected local PostgreSQL at $pgBin." -ForegroundColor White
+        $pgData = "$root\.pgdata"
+        if (-not (Test-Path $pgData)) {
+            Write-Host "  Initializing local database cluster at $pgData..." -ForegroundColor White
+            & "$pgBin\initdb.exe" -D $pgData -U presence -A trust
+        }
+
+        # Check if server is running for this data directory
+        & "$pgBin\pg_ctl.exe" -D $pgData status > $null 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  Starting local PostgreSQL on port 5433..." -ForegroundColor White
+            & "$pgBin\pg_ctl.exe" -D $pgData -o "-p 5433" -l "$pgData\server.log" start
+            Start-Sleep -Seconds 1
+        }
+
+        # Ensure 'presence' database exists
+        & "$pgBin\createdb.exe" -h 127.0.0.1 -p 5433 -U presence presence > $null 2>&1
+        $dbUrl = "postgresql://presence@127.0.0.1:5433/presence"
+        Write-Host "  Local PostgreSQL ready on port 5433." -ForegroundColor Green
+    } else {
+        Write-Host "  WARNING: Docker is not running and local PostgreSQL binaries were not found." -ForegroundColor Yellow
+        Write-Host "  Ensure Docker Desktop or PostgreSQL is running, or set DATABASE_URL." -ForegroundColor Yellow
+    }
+}
+
+# Persist DATABASE_URL to backend/.env and current environment
+if ($dbUrl) {
+    Set-Content -Path "$root\backend\.env" -Value "DATABASE_URL=$dbUrl"
+    $env:DATABASE_URL = $dbUrl
 }
 
 # ---- Launch servers ---------------------------------------------------------
@@ -64,20 +125,20 @@ Write-Host "  Starting backend  ->  http://localhost:8000/docs" -ForegroundColor
 Write-Host "  Starting frontend ->  http://localhost:5173" -ForegroundColor Green
 Write-Host ""
 
-# Start-Process opens a NEW PowerShell window for each server.
-# -NoExit keeps the window open after the command finishes (or crashes).
-# -WorkingDirectory sets the correct folder so Python/Bun can find their files.
+$shellExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
 
-Start-Process powershell -ArgumentList `
+$backendCmd = "Write-Host '  Backend running -- http://localhost:8000/docs' -ForegroundColor Green; Write-Host '  Database: $dbUrl' -ForegroundColor DarkGray; Write-Host '  NOTE: First face-recognition call downloads ~500 MB model. Be patient!' -ForegroundColor Yellow; Write-Host ''; uv run uvicorn main:app --reload --port 8000"
+
+Start-Process $shellExe -ArgumentList `
     "-NoExit", `
     "-Command", `
-    "Write-Host '  Backend running -- http://localhost:8000/docs' -ForegroundColor Green; Write-Host '  NOTE: First face-recognition call downloads ~500 MB model. Be patient!' -ForegroundColor Yellow; Write-Host ''; uv run uvicorn main:app --reload --port 8000" `
+    $backendCmd `
     -WorkingDirectory "$root\backend"
 
 # Give the backend a couple of seconds to bind its port before the frontend starts.
 Start-Sleep -Seconds 2
 
-Start-Process powershell -ArgumentList `
+Start-Process $shellExe -ArgumentList `
     "-NoExit", `
     "-Command", `
     "Write-Host '  Frontend running -- http://localhost:5173' -ForegroundColor Green; Write-Host ''; bun run dev" `
