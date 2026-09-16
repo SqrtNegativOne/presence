@@ -3,7 +3,7 @@ import { BrowserRouter, Link, NavLink, Route, Routes } from "react-router-dom";
 import AttendancePage from "./pages/AttendancePage";
 import EnrollPage from "./pages/EnrollPage";
 import StudentsPage from "./pages/StudentsPage";
-import { ModelProvider, useModel } from "./context/ModelContext";
+import { ModelProvider, useModel, CLOUD_ALLOWED } from "./context/ModelContext";
 
 /*
   NavLink's className prop receives { isActive } — React Router tells us
@@ -50,19 +50,21 @@ function ModelSelector() {
         >
           Local (Private)
         </button>
-        <button
-          type="button"
-          onClick={() => setEngine("cloud")}
-          aria-pressed={engine === "cloud"}
-          className={`px-2.5 py-1 text-[0.65rem] font-mono uppercase tracking-wider transition-colors duration-150 font-semibold ${
-            engine === "cloud"
-              ? "bg-[var(--col-accent)] text-[#06060f]"
-              : "text-[var(--col-muted)] hover:text-[var(--col-text)]"
-          }`}
-          title="Cloud mode uses a more accurate model on the server."
-        >
-          Cloud (Accurate)
-        </button>
+        {CLOUD_ALLOWED && (
+          <button
+            type="button"
+            onClick={() => setEngine("cloud")}
+            aria-pressed={engine === "cloud"}
+            className={`px-2.5 py-1 text-[0.65rem] font-mono uppercase tracking-wider transition-colors duration-150 font-semibold ${
+              engine === "cloud"
+                ? "bg-[var(--col-accent)] text-[#06060f]"
+                : "text-[var(--col-muted)] hover:text-[var(--col-text)]"
+            }`}
+            title="Cloud mode uses a more accurate model on the server."
+          >
+            Cloud (Accurate)
+          </button>
+        )}
       </div>
 
       {/* Helper / Explainer Tooltip */}

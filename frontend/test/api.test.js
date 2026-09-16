@@ -1,10 +1,25 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import {
+  buildApiBase,
   enrollStudent,
   enrollStudentEmbedding,
   processAttendance,
   matchEmbeddings,
 } from "../src/api.js";
+
+describe("buildApiBase", () => {
+  it("returns a relative base when no origin is configured", () => {
+    expect(buildApiBase("")).toBe("/api");
+    expect(buildApiBase(undefined)).toBe("/api");
+    expect(buildApiBase(null)).toBe("/api");
+  });
+
+  it("prefixes the configured backend origin", () => {
+    expect(buildApiBase("https://presence-api.onrender.com")).toBe(
+      "https://presence-api.onrender.com/api"
+    );
+  });
+});
 
 describe("Frontend API Client", () => {
   const originalFetch = globalThis.fetch;

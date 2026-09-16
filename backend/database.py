@@ -14,6 +14,7 @@ from loguru import logger
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+
 def _load_env_file() -> None:
     for candidate in [
         os.path.join(os.path.dirname(__file__), ".env"),

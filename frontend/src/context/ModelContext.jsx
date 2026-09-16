@@ -9,6 +9,10 @@ const ModelContext = createContext({
 
 const STORAGE_KEY = "recognition_engine";
 
+// Hosted local-only deployments set VITE_ALLOW_CLOUD=false at build time.
+// That forces Local mode and removes the cloud toggle from the UI.
+export const CLOUD_ALLOWED = import.meta.env.VITE_ALLOW_CLOUD !== "false";
+
 export function ModelProvider({ children }) {
   const [engine, setEngineState] = useState(() => {
     try {
@@ -16,7 +20,7 @@ export function ModelProvider({ children }) {
       if (stored) {
         const val = stored.toLowerCase();
         if (val === "local" || val === "cloud") {
-          return val;
+          return val === "cloud" && !CLOUD_ALLOWED ? "local" : val;
         }
       }
     } catch (e) {
@@ -26,7 +30,10 @@ export function ModelProvider({ children }) {
   });
 
   const setEngine = (newEngine) => {
-    const normalized = (newEngine || "local").toLowerCase() === "cloud" ? "cloud" : "local";
+    let normalized = (newEngine || "local").toLowerCase() === "cloud" ? "cloud" : "local";
+    if (!CLOUD_ALLOWED) {
+      normalized = "local";
+    }
     setEngineState(normalized);
     try {
       localStorage.setItem(STORAGE_KEY, normalized);

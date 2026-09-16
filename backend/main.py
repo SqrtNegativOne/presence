@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
+import config
 import database
 from routers import attendance, students
 
@@ -33,6 +34,7 @@ logger.add(
 async def lifespan(app: FastAPI):
     # --- startup ---
     logger.info("Starting Presence backend…")
+    logger.info(f"Cloud mode enabled: {config.CLOUD_MODE_ENABLED}")
     database.init_db()  # create tables if they don't exist
     # We intentionally do NOT pre-load the InsightFace model here because
     # it takes 5-10 seconds and the first request will trigger it anyway.
@@ -54,11 +56,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow the Vite dev server (port 5173) to call our API without CORS errors.
-# In production you would restrict this to your actual domain.
+# Allow the configured frontend origins to call our API without CORS errors.
+# Configure via the ALLOWED_ORIGINS env var (comma-separated).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=config.ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

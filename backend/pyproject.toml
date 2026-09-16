@@ -6,14 +6,20 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "python-multipart>=0.0.12",
-    "insightface>=0.7.3",
-    "onnxruntime>=1.18.0",
-    "Pillow>=10.0.0",
-    "opencv-python-headless>=4.10.0",
     "numpy>=1.26.0",
     "loguru>=0.7.0",
     "psycopg[binary]>=3.3.5",
     "psycopg-pool>=3.3.1",
+]
+
+[project.optional-dependencies]
+# Server-side (InsightFace) inference. Install with `uv sync --extra cloud`.
+# Local-only deployments intentionally skip these.
+cloud = [
+    "insightface>=0.7.3",
+    "onnxruntime>=1.18.0",
+    "Pillow>=10.0.0",
+    "opencv-python-headless>=4.10.0",
 ]
 
 [dependency-groups]

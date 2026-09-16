@@ -1,8 +1,21 @@
+import importlib.util
 from unittest.mock import patch
 
+import pytest
 
+# Cloud inference lives in the optional `cloud` extra. Skip cloud-only tests in
+# a lite install so the local-mode suite still runs.
+requires_cloud = pytest.mark.skipif(
+    importlib.util.find_spec("insightface") is None,
+    reason="cloud extra not installed",
+)
+
+
+@requires_cloud
 def test_enroll_student(client, dummy_embedding, dummy_image_bytes):
-    with patch("routers.students.encode_single_face", return_value=dummy_embedding):
+    with patch(
+        "services.face_service.encode_single_face", return_value=dummy_embedding
+    ):
         response = client.post(
             "/api/students/enroll",
             data={"name": "Alice Smith", "roll_number": "CS101", "class_name": "10-A"},
@@ -16,8 +29,11 @@ def test_enroll_student(client, dummy_embedding, dummy_image_bytes):
     assert "id" in data
 
 
+@requires_cloud
 def test_enroll_duplicate_roll_number(client, dummy_embedding, dummy_image_bytes):
-    with patch("routers.students.encode_single_face", return_value=dummy_embedding):
+    with patch(
+        "services.face_service.encode_single_face", return_value=dummy_embedding
+    ):
         res1 = client.post(
             "/api/students/enroll",
             data={"name": "Alice Smith", "roll_number": "CS101", "class_name": "10-A"},
@@ -34,9 +50,10 @@ def test_enroll_duplicate_roll_number(client, dummy_embedding, dummy_image_bytes
         assert "already enrolled" in res2.json()["detail"]
 
 
+@requires_cloud
 def test_enroll_no_face(client, dummy_image_bytes):
     with patch(
-        "routers.students.encode_single_face",
+        "services.face_service.encode_single_face",
         side_effect=ValueError("No face detected in the enrollment photo."),
     ):
         response = client.post(
@@ -48,9 +65,10 @@ def test_enroll_no_face(client, dummy_image_bytes):
     assert "No face detected" in response.json()["detail"]
 
 
+@requires_cloud
 def test_enroll_multiple_faces(client, dummy_image_bytes):
     with patch(
-        "routers.students.encode_single_face",
+        "services.face_service.encode_single_face",
         side_effect=ValueError(
             "2 faces detected. Enrollment photos must contain exactly one person."
         ),
@@ -66,8 +84,11 @@ def test_enroll_multiple_faces(client, dummy_image_bytes):
     )
 
 
+@requires_cloud
 def test_list_students_by_class(client, dummy_embedding, dummy_image_bytes):
-    with patch("routers.students.encode_single_face", return_value=dummy_embedding):
+    with patch(
+        "services.face_service.encode_single_face", return_value=dummy_embedding
+    ):
         client.post(
             "/api/students/enroll",
             data={"name": "Alice", "roll_number": "CS101", "class_name": "10-A"},
@@ -91,8 +112,11 @@ def test_list_students_by_class(client, dummy_embedding, dummy_image_bytes):
     assert res_all.json()["count"] == 2
 
 
+@requires_cloud
 def test_delete_student(client, dummy_embedding, dummy_image_bytes):
-    with patch("routers.students.encode_single_face", return_value=dummy_embedding):
+    with patch(
+        "services.face_service.encode_single_face", return_value=dummy_embedding
+    ):
         res = client.post(
             "/api/students/enroll",
             data={"name": "Alice", "roll_number": "CS101", "class_name": "10-A"},
@@ -148,3 +172,34 @@ def test_enroll_student_embedding_duplicate(client, dummy_embedding_128):
         },
     )
     assert res.status_code == 409
+
+
+def test_cloud_disabled_enroll_returns_503(client, dummy_image_bytes, monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "CLOUD_MODE_ENABLED", False)
+    res = client.post(
+        "/api/students/enroll",
+        data={"name": "Alice", "roll_number": "CS101", "class_name": "10-A"},
+        files={"photo": ("a.jpg", dummy_image_bytes, "image/jpeg")},
+    )
+    assert res.status_code == 503
+    assert "Cloud mode is disabled" in res.json()["detail"]
+
+
+def test_cloud_disabled_embedding_still_works(client, dummy_embedding_128, monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "CLOUD_MODE_ENABLED", False)
+    res = client.post(
+        "/api/students/enroll-embedding",
+        json={
+            "name": "Local Lisa",
+            "roll_number": "CS105",
+            "class_name": "10-A",
+            "embedding": dummy_embedding_128.tolist(),
+            "model_type": "faceapi",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["model_type"] == "faceapi"

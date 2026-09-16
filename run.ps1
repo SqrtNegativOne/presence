@@ -33,9 +33,9 @@ if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
 }
 
 # ---- Install dependencies (idempotent -- safe to run every time) ------------
-Write-Host "  [1/2] Syncing backend dependencies (uv sync)..." -ForegroundColor White
+Write-Host "  [1/2] Syncing backend dependencies (uv sync --extra cloud)..." -ForegroundColor White
 Push-Location "$root\backend"
-uv sync
+uv sync --extra cloud
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  ERROR: uv sync failed." -ForegroundColor Red
     Pop-Location; Read-Host "  Press Enter to exit"; exit 1

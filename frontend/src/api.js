@@ -2,10 +2,24 @@
  * api.js — All network calls to the FastAPI backend in one place.
  *
  * We use the browser's built-in `fetch` API — no axios needed.
- * Because Vite proxies /api → localhost:8000, we use relative URLs.
+ *
+ * When VITE_API_BASE_URL is unset the app uses relative `/api` URLs, so the
+ * Vite dev proxy (and same-origin deployments) work with zero config. Set it
+ * to the backend origin (e.g. https://presence-api.onrender.com) for hosted
+ * frontends.
  */
 
-const BASE = "/api";
+const API_ORIGIN = import.meta.env.VITE_API_BASE_URL ?? "";
+const BASE = buildApiBase(API_ORIGIN);
+
+/**
+ * Build the API base URL for a given backend origin.
+ * Empty/unset origin yields a relative `/api` base (dev proxy / same-origin).
+ * @param {string|undefined|null} origin
+ */
+export function buildApiBase(origin) {
+  return `${origin ?? ""}/api`;
+}
 
 // ── Students ────────────────────────────────────────────────────────────────
 

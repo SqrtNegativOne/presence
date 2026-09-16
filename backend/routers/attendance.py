@@ -14,8 +14,8 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 import database
-from services.face_service import match_embeddings, match_group_photo
-from services.image_service import annotate_image
+from config import require_cloud_mode
+from services.matching import match_embeddings
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 
@@ -38,6 +38,12 @@ async def process_attendance(
     """
     Upload a group photo → run face recognition → annotate image → persist session & records → respond.
     """
+    require_cloud_mode()
+
+    # Heavy ML imports stay lazy so local-only deployments never load them.
+    from services.face_service import match_group_photo
+    from services.image_service import annotate_image
+
     if not attendance_date:
         attendance_date = str(date.today())
 

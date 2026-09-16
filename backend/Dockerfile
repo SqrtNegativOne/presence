@@ -20,8 +20,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # Copy dependency definition first — Docker caches this layer separately.
 # If only source code changes (not pyproject.toml), this expensive install
 # step is skipped on the next build. This is called "layer caching."
-COPY pyproject.toml .
-RUN uv sync
+COPY pyproject.toml uv.lock ./
+
+# Local full stack builds with INSTALL_CLOUD=true; the hosted lite image
+# leaves it false and installs only the JSON + numpy + psycopg runtime.
+ARG INSTALL_CLOUD=false
+RUN if [ "$INSTALL_CLOUD" = "true" ]; then uv sync --extra cloud; else uv sync --no-dev; fi
 
 # Now copy the actual source code
 COPY . .
@@ -30,4 +34,5 @@ EXPOSE 8000
 
 # --host 0.0.0.0 makes uvicorn listen on all interfaces inside the container.
 # Without this it only listens on 127.0.0.1, which is unreachable from outside.
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# `${PORT:-8000}` honours the port injected by hosting platforms like Render.
+CMD uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}

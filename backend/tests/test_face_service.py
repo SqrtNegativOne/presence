@@ -1,8 +1,14 @@
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
-from services.face_service import THRESHOLD, match_group_photo
+# The full cloud stack is an optional extra. Skip this module in lite installs
+# so the rest of the suite still collects and runs.
+pytest.importorskip("insightface")
+pytest.importorskip("cv2")
+
+from services.face_service import THRESHOLD, match_group_photo  # noqa: E402
 
 
 class MockFace:

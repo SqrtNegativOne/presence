@@ -1,12 +1,22 @@
 import csv
+import importlib.util
 import io
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 import database
 
+# Cloud inference lives in the optional `cloud` extra. Skip cloud-only tests in
+# a lite install so the local-mode suite still runs.
+requires_cloud = pytest.mark.skipif(
+    importlib.util.find_spec("insightface") is None,
+    reason="cloud extra not installed",
+)
 
+
+@requires_cloud
 def test_process_attendance_no_students(client, dummy_image_bytes):
     response = client.post(
         "/api/attendance/process",
@@ -17,6 +27,7 @@ def test_process_attendance_no_students(client, dummy_image_bytes):
     assert "No students enrolled yet" in response.json()["detail"]
 
 
+@requires_cloud
 def test_process_attendance_persistence_and_absences(
     client, dummy_embedding, dummy_image_bytes
 ):
@@ -38,8 +49,10 @@ def test_process_attendance_persistence_and_absences(
     ]
 
     with (
-        patch("routers.attendance.match_group_photo", return_value=mock_face_results),
-        patch("routers.attendance.annotate_image", return_value="dummy_base64"),
+        patch(
+            "services.face_service.match_group_photo", return_value=mock_face_results
+        ),
+        patch("services.image_service.annotate_image", return_value="dummy_base64"),
     ):
         response = client.post(
             "/api/attendance/process",
@@ -176,3 +189,37 @@ def test_match_embeddings_no_students(client, dummy_embedding_128):
     )
     assert response.status_code == 400
     assert "No students enrolled yet" in response.json()["detail"]
+
+
+def test_cloud_disabled_process_returns_503(client, dummy_image_bytes, monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "CLOUD_MODE_ENABLED", False)
+    res = client.post(
+        "/api/attendance/process",
+        data={"class_name": "10-A"},
+        files={"photo": ("group.jpg", dummy_image_bytes, "image/jpeg")},
+    )
+    assert res.status_code == 503
+    assert "Cloud mode is disabled" in res.json()["detail"]
+
+
+def test_cloud_disabled_match_embeddings_still_works(
+    client, dummy_embedding_128, monkeypatch
+):
+    import config
+
+    monkeypatch.setattr(config, "CLOUD_MODE_ENABLED", False)
+    database.insert_student(
+        "Alice", "CS101", "10-A", dummy_embedding_128, model_type="faceapi"
+    )
+    res = client.post(
+        "/api/attendance/match-embeddings",
+        json={
+            "class_name": "10-A",
+            "embeddings": [dummy_embedding_128.tolist()],
+            "model_type": "faceapi",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["recognized_count"] == 1

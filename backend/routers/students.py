@@ -11,7 +11,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 import database
-from services.face_service import encode_single_face
+from config import require_cloud_mode
 
 router = APIRouter(prefix="/api/students", tags=["students"])
 
@@ -39,9 +39,13 @@ async def enroll_student(
     2. Detect the single face and compute its 512-d embedding
     3. Store name/roll/class + embedding in database
     """
+    require_cloud_mode()
+
     image_bytes = await photo.read()
 
     try:
+        from services.face_service import encode_single_face
+
         embedding = encode_single_face(image_bytes)
     except ValueError as e:
         # This catches "no face" or "multiple faces" errors from face_service

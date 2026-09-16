@@ -23,7 +23,10 @@ services:
       retries: 5
 
   backend:
-    build: ./backend            # build from backend/Dockerfile
+    build:
+      context: ./backend       # build from backend/Dockerfile
+      args:
+        INSTALL_CLOUD: "true"  # local "production" keeps InsightFace
     ports:
       - "8000:8000"             # host:container — visit localhost:8000/docs
     volumes:
@@ -31,6 +34,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1      # print logs immediately (no buffering)
       - DATABASE_URL=postgresql://presence:presence@db:5432/presence
+      - CLOUD_MODE_ENABLED=true
     depends_on:
       db:
         condition: service_healthy

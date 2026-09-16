@@ -1,0 +1,21 @@
+# render.yaml — backend Blueprint for a free Render Docker Web Service.
+#
+# This builds the "lite" image (INSTALL_CLOUD=false by default), which serves
+# local-only mode: no InsightFace / ONNX / OpenCV / Pillow runtime.
+# Pair it with a managed Postgres (Neon free tier) and a static frontend
+# (Cloudflare Pages / Vercel / Render static).
+services:
+  - type: web
+    name: presence-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: CLOUD_MODE_ENABLED
+        value: "false"
+      - key: ALLOWED_ORIGINS
+        sync: false # set to the Pages URL, e.g. https://presence.pages.dev
+      - key: DATABASE_URL
+        sync: false # Neon pooled connection string (includes sslmode=require)
