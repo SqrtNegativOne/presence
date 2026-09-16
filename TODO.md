@@ -8,23 +8,25 @@ This file tracks **outstanding work only**. Shipped milestones (safe embeddings 
 ## 🚀 Upcoming Milestones
 
 ### 📌 Phase 1: CI/CD & Cloud Deployment
-Target: Free, zero-cost production hosting on Render/Vercel + Neon/Supabase.
+Target: Free, zero-cost **local-only** hosting — Render (Docker API) + Cloudflare Pages/Vercel (static frontend) + Neon/Supabase (PostgreSQL).
 
-- [ ] **Health Check Endpoint**: Add `GET /api/health` returning database connectivity and service status.
+> **Deployment profile:** [`docs/local-only-deployment-plan.md`](docs/local-only-deployment-plan.md). Hosted builds run browser-only inference (`CLOUD_MODE_ENABLED=false`, no server ML runtime). Full InsightFace cloud mode stays available on the developer machine via `docker-compose` / `run.ps1` (`INSTALL_CLOUD=true`).
+
+- [ ] **Health Check Endpoint**: Add `GET /api/health` returning database connectivity and service status. *(Render currently health-checks `/`.)*
 - [ ] **GitHub Actions CI (`.github/workflows/test.yml`)**:
   - Backend test runner (uv + pytest with PostgreSQL service container).
   - Frontend test runner (`bun test` + `bun run build`).
   - Lint gates (`uv run ruff check`, `bun run lint`).
 - [ ] **Cloud Database Setup**:
-  - Provision a permanent PostgreSQL instance on Neon or Supabase (500 MB free tier, no 30-day deletion).
-  - Configure `DATABASE_URL` environment variable for production.
-- [ ] **Backend Deployment (Render / Railway / Fly.io)**:
-  - Infrastructure-as-code (`render.yaml` or Dockerfile).
-  - Production dependency group (ensure thin matching API stays comfortably within free tier 512 MB RAM limit).
-  - Handle spin-down cold starts (frontend ping / keep-alive).
-- [ ] **Frontend Deployment (Vercel / Cloudflare Pages)**:
-  - Static build (`bun run build`) with CDN caching for static model weights (`/models/`).
-  - Configure API proxy / environment variables for backend URL.
+  - [ ] Provision a permanent PostgreSQL instance on Neon or Supabase (500 MB free tier, no 30-day deletion).
+  - [x] Env-driven `DATABASE_URL` documented in `backend/.env.example`.
+- [ ] **Backend Deployment (Render — Docker Web Service)**:
+  - [x] Infrastructure-as-code (`render.yaml`, free plan) and `${PORT}` support in `backend/Dockerfile`.
+  - [x] Production dependency group: `cloud` is now an optional extra, so the lite image installs no InsightFace/ONNX/OpenCV/Pillow and imports none of them.
+  - [ ] Handle spin-down cold starts (frontend ping / keep-alive).
+- [ ] **Frontend Deployment (Cloudflare Pages / Vercel — static)**:
+  - [x] Static build (`bun run build`) serving model weights from `/models/`.
+  - [x] Backend URL via `VITE_API_BASE_URL`; `VITE_ALLOW_CLOUD=false` forces local mode and hides the cloud toggle.
 
 ### 📌 Phase 2: Authentication & Multi-Tenancy
 Target: Secure multi-teacher support and class isolation.
