@@ -5,8 +5,6 @@
 
 This file tracks **outstanding work only**. Shipped milestones (safe embeddings storage, relational attendance persistence, hybrid local/cloud recognition, camera capture, and the initial test suite) are recorded in git history and documented under "Key Architecture Decisions" in `AGENTS.md`.
 
----
-
 ## 🚀 Upcoming Milestones
 
 ### 📌 Phase 1: CI/CD & Cloud Deployment
@@ -59,8 +57,6 @@ Target: Secure multi-teacher support and class isolation.
   - Offload CPU/GPU-heavy InsightFace processing to worker threadpools (`starlette.concurrency.run_in_threadpool`) or Celery/Redis queue.
 - [ ] **Adaptive Detection Resolution**:
   - Dynamic `det_size` scaling in InsightFace based on image dimensions to catch distant/small faces in large classrooms.
-
----
 
 ## 📐 Architecture Reference
 
