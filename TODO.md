@@ -1,47 +1,22 @@
-# Presence — Roadmap & Status
+# Presence — Roadmap
 
 > Fast, private face-recognition attendance system for classrooms.  
 > **Hybrid engine**: Client-side local inference (face-api.js) + Cloud inference (InsightFace) backed by PostgreSQL & FastAPI.
 
----
-
-## 🎯 Completed Milestones
-
-### ✅ Phase 1: Security & Core Persistence
-- [x] **Safe Embeddings Storage**: Replaced `pickle` with `numpy.tobytes()` (float32 BLOBs/BYTEA) to eliminate arbitrary code execution vulnerabilities.
-- [x] **Attendance Persistence**: Added `attendance_sessions` and `attendance_records` tables with full relational tracking and cascade deletion.
-- [x] **Absence Tracking**: Auto-compute absent students per class session and include in attendance results and CSV export.
-- [x] **Session History & Inspection**: Endpoints for past session history (`GET /api/attendance/history`) and session details (`GET /api/attendance/sessions/{id}`).
-
-### ✅ Phase 2: Hybrid AI Recognition & Camera Capture
-- [x] **In-Browser Camera Capture**: Live webcam/mobile camera capture via `navigator.mediaDevices.getUserMedia` on both Enrollment and Attendance pages.
-- [x] **Local Model Engine (face-api.js)**: Integrated `@vladmandic/face-api` for private, client-side face detection and 128-d embedding extraction.
-- [x] **Static Model Assets**: Hosted SSD MobileNet v1, FaceLandmark68, and FaceRecognition models in `frontend/public/models/`.
-- [x] **Dual-Pipeline Backend Matching**: `POST /api/attendance/match-embeddings` and `POST /api/students/enroll-embedding` supporting both 128-d (local) and 512-d (cloud) embeddings.
-- [x] **Client-Side Annotation**: Real-time `<canvas>` bounding box and label rendering in the browser (photos never sent to server in Local mode).
-- [x] **Model Selector UI**: Navbar toggle (`Local (Private) | Cloud (Accurate)`) with explanation tooltip and `localStorage` persistence.
-
-### ✅ Phase 3: Production Database (PostgreSQL)
-- [x] **PostgreSQL Migration**: Replaced SQLite with `psycopg` (v3) + `psycopg-pool` connection pooling.
-- [x] **Relational Schema**: `students` (with `model_type`), `attendance_sessions`, and `attendance_records`.
-- [x] **Containerized Dev & Orchestration**: PostgreSQL 16 service added to `docker-compose.yml` with health checks; updated `run.ps1` for local setup.
-- [x] **Zero-ORM Direct Queries**: Retained high-performance parameterized SQL queries with `%s` placeholders and connection pooling.
-
-### ✅ Phase 4: Core Test Suite
-- [x] **Backend Unit & Integration Tests**: 22 tests covering CRUD, constraints, endpoints, local/cloud matching, duplicate roll numbers, and CSV exports (`uv run pytest`).
-- [x] **Frontend Unit Tests**: 12 tests covering API client, model service contracts, and localStorage context state (`bun test`).
+This file tracks **outstanding work only**. Shipped milestones (safe embeddings storage, relational attendance persistence, hybrid local/cloud recognition, camera capture, and the initial test suite) are recorded in git history and documented under "Key Architecture Decisions" in `AGENTS.md`.
 
 ---
 
-## 🚀 Active & Upcoming Milestones
+## 🚀 Upcoming Milestones
 
-### 📌 Phase 5: CI/CD & Cloud Deployment
+### 📌 Phase 1: CI/CD & Cloud Deployment
 Target: Free, zero-cost production hosting on Render/Vercel + Neon/Supabase.
 
 - [ ] **Health Check Endpoint**: Add `GET /api/health` returning database connectivity and service status.
 - [ ] **GitHub Actions CI (`.github/workflows/test.yml`)**:
   - Backend test runner (uv + pytest with PostgreSQL service container).
   - Frontend test runner (`bun test` + `bun run build`).
+  - Lint gates (`uv run ruff check`, `bun run lint`).
 - [ ] **Cloud Database Setup**:
   - Provision a permanent PostgreSQL instance on Neon or Supabase (500 MB free tier, no 30-day deletion).
   - Configure `DATABASE_URL` environment variable for production.
@@ -53,7 +28,7 @@ Target: Free, zero-cost production hosting on Render/Vercel + Neon/Supabase.
   - Static build (`bun run build`) with CDN caching for static model weights (`/models/`).
   - Configure API proxy / environment variables for backend URL.
 
-### 📌 Phase 6: Authentication & Multi-Tenancy
+### 📌 Phase 2: Authentication & Multi-Tenancy
 Target: Secure multi-teacher support and class isolation.
 
 - [ ] **Auth Provider Integration**:
@@ -65,7 +40,7 @@ Target: Secure multi-teacher support and class isolation.
 - [ ] **Protected Routes**:
   - Frontend auth context, login/register modal/page, and JWT injection in HTTP requests.
 
-### 📌 Phase 7: Analytics & User Experience
+### 📌 Phase 3: Analytics & User Experience
 - [ ] **Attendance Analytics Dashboard**:
   - Visual charts (e.g. `recharts`) showing attendance trends over time per class and student.
   - Identification of chronic absentees and attendance rate summaries.
@@ -75,7 +50,7 @@ Target: Secure multi-teacher support and class isolation.
   - Web app manifest and service worker for installable mobile web app.
   - Improved mobile camera viewfinder styling.
 
-### 📌 Phase 8: Advanced ML & Optimization (Stretch Goals)
+### 📌 Phase 4: Advanced ML & Optimization (Stretch Goals)
 - [ ] **Optimal Face Assignment (Hungarian Algorithm)**:
   - Replace greedy cosine similarity matching with global minimum-cost bipartite matching via `scipy.optimize.linear_sum_assignment`.
 - [ ] **Database Vector Search (`pgvector`)**:
